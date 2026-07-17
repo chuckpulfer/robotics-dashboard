@@ -228,9 +228,18 @@ function teamRow(t){
  const s=epa[t]||{}, r=rankings[t];
  return `<div class="teamrow ${t===team?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
 }
+function teamNextMatch(t){
+ const list=allMatches[config.eventKey]||[];
+ return list.filter(m=>!matchDone(m)&&(m.red.includes(t)||m.blue.includes(t))).sort((a,b)=>a.q-b.q)[0]||null;
+}
+function teamNextLabel(t){
+ const m=teamNextMatch(t); if(!m)return "—";
+ const at=fmtMatchTime(m);
+ return `Q${m.q}${at?" · "+at:""}`;
+}
 function teamTableRow(t){
  const s=epa[t]||{}, r=rankings[t]||{};
- return `<div class="team-item ${t===team?"my-team":""}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div></div>`;
+ return `<div class="team-item ${t===team?"my-team":""}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
 }
 function alliance(color,list,won=false){
  const win=won?" · WIN":"";
@@ -321,7 +330,7 @@ function renderTeams(){
  if(!list.length){$("teamList").innerHTML='<div class="empty">No teams match your search.</div>';return}
  $("teamList").innerHTML=`<div class="teams-header">
  <button data-sort="number" class="header-btn ${teamSort==="number"?"active":""}">Team</button><button data-sort="name" class="header-btn ${teamSort==="name"?"active":""}">Name</button>
- <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button>
+ <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button><div class="stat-label">Next</div>
  </div>${list.map(teamTableRow).join("")}`;
 }
 function render(){renderHeader();renderNext();renderMatches();renderAllMatches();renderTeams()}
