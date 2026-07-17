@@ -20,8 +20,8 @@ let teamEvents=(()=>{const c=load(K.teamEvents,null);return c?.team===team?c.eve
 let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
-let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="";
-$("teamNumber").value=team;$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;
+let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
+$("teamNumber").value=team;$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("teamSort").value=teamSort;
 syncEventUI();renderEventSelect();
 
 function hasApiKey(){return!!config.tbaKey?.trim()}
@@ -136,6 +136,24 @@ function syncPowerLabels(){
  powerSource=s?.source||"cached";
  powerLabel=powerSource==="opr"?"OPR":"EPA";
  rankLabel=powerSource==="opr"?"OPR #":"World";
+ updatePowerHelpStatus();
+ updateTeamSortLabel();
+}
+function updateTeamSortLabel(){
+ const opt=$("teamSort")?.querySelector('option[value="power"]');
+ if(opt)opt.textContent=powerSource==="opr"?"OPR rank":"World rank";
+}
+function updatePowerHelpStatus(){
+ const el=$("powerHelpStatus"); if(!el)return;
+ if(powerSource==="opr")el.textContent="Currently showing OPR from The Blue Alliance for this event.";
+ else if(powerSource==="epa")el.textContent="Currently showing EPA from Statbotics.";
+ else el.textContent="Power ratings are not loaded yet. Add a TBA API key and refresh.";
+}
+function openPowerHelp(){
+ openSettings();
+ const d=$("powerHelp");
+ if(d&&!d.open)d.open=true;
+ requestAnimationFrame(()=>d?.scrollIntoView({behavior:"smooth",block:"start"}));
 }
 syncPowerLabels();
 
@@ -148,7 +166,15 @@ function teamMatchesSearch(t,q){
  const name=(teams[t]||"").toLowerCase(), query=q.toLowerCase().trim();
  return String(t).includes(query)||name.includes(query);
 }
-function sortedTeams(){return allTeams().sort((a,b)=>(epa[a]?.rank??99999)-(epa[b]?.rank??99999))}
+function sortedTeams(){
+ const list=allTeams();
+ return list.sort((a,b)=>{
+  if(teamSort==="number")return a-b;
+  if(teamSort==="event")return (rankings[a]?.rank??99999)-(rankings[b]?.rank??99999)||(epa[a]?.rank??99999)-(epa[b]?.rank??99999)||a-b;
+  if(teamSort==="name")return (teams[a]||"").localeCompare(teams[b]||"","en",{sensitivity:"base"})||a-b;
+  return (epa[a]?.rank??99999)-(epa[b]?.rank??99999)||a-b;
+ });
+}
 function teamRow(t){
  const s=epa[t]||{}, r=rankings[t];
  return `<div class="teamrow ${t===team?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
@@ -165,16 +191,34 @@ function matchWinner(m){
  if(m.blueScore>m.redScore)return "blue";
  return "tie";
 }
-function fmtMatchTime(m){return m?.predicted_time?new Date(m.predicted_time*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):null}
+function fmtUnixTime(ts){return ts?new Date(ts*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):null}
+function matchPlayTime(m){return fmtUnixTime(m?.actual_time||m?.post_result_time)}
+function fmtMatchTime(m){return fmtUnixTime(m?.predicted_time)}
 function matchScoreboard(m){
  const w=matchWinner(m);
  return `<div class="scoreboard"><div class="scorebox red${w==="red"?" won":""}"><span class="scorelabel">Red</span><b>${m.redScore}</b></div><div class="scorebox blue${w==="blue"?" won":""}"><span class="scorelabel">Blue</span><b>${m.blueScore}</b></div></div>`;
 }
 function matchCardMeta(m){
- if(matchHasScore(m))return {text:matchWinner(m)==="tie"?"Tie":"Final",cls:"winner"};
- if(matchDone(m))return {text:"Pending",cls:"pending"};
+ if(matchHasScore(m)){
+  const played=matchPlayTime(m), label=matchWinner(m)==="tie"?"Tie":"Final";
+  return {text:played?`${label} · ${played}`:label,cls:"winner"};
+ }
+ if(matchDone(m)){
+  const played=matchPlayTime(m);
+  return {text:played?`Played · ${played}`:"Pending",cls:"pending"};
+ }
  const t=fmtMatchTime(m);
  return {text:t?`Est. ${t}`:"Time TBD",cls:"pending"};
+}
+function latestMatchTarget(){
+ const sorted=[...matches].sort((a,b)=>a.q-b.q);
+ const played=sorted.filter(matchDone);
+ if(played.length)return played[played.length-1];
+ return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
+}
+function scrollToLatestMatch(){
+ const m=latestMatchTarget(); if(!m?.key)return;
+ requestAnimationFrame(()=>document.getElementById("match-"+m.key)?.scrollIntoView({behavior:"smooth",block:"center"}));
 }
 function nextMatch(){
  const sorted=[...matches].sort((a,b)=>a.q-b.q); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
@@ -187,17 +231,18 @@ function renderNext(){
  const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
  const m=nextMatch(); if(!m){$("nextContent").innerHTML=keyReminder+'<div class="empty">No matches loaded.</div>';return}
  const p=probability(m), mine=m.red.includes(team)?"RED":"BLUE";
- const when=fmtMatchTime(m);
+ const played=matchPlayTime(m), est=fmtMatchTime(m);
+ const whenLabel=matchHasScore(m)?(played?`Final · ${played}`:"Final"):matchDone(m)?(played?`Played · ${played}`:"Pending"):est?`Est. ${est}`:"Time not posted";
  $("nextContent").innerHTML=`${keyReminder}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">Qualification ${m.q}</div>
- <div class="countdown">${when?`Est. ${when}`:"Time not posted"}</div>
- ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div>`:""}
+ <div class="countdown">${whenLabel}</div>
+ ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div><button type="button" class="helpbtn power-help-inline" data-open-power-help aria-label="Explain ${powerLabel}">?</button>`:""}
  ${matchHasScore(m)?matchScoreboard(m):""}
  ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>
  <h2 class="section-title">After this</h2>${[...matches].filter(x=>x.q>m.q).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
 }
 function matchCard(m){
  const meta=matchCardMeta(m), w=matchWinner(m);
- return `<article class="card${matchHasScore(m)?" played":""}"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${meta.cls}">${meta.text}</span></div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</article>`;
+ return `<article class="card${matchHasScore(m)?" played":""}" id="match-${m.key}"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${meta.cls}">${meta.text}</span></div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</article>`;
 }
 function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
 function renderTeams(){
@@ -205,7 +250,7 @@ function renderTeams(){
  $("teamList").innerHTML=list.length?list.map(t=>{
  const s=epa[t]||{},r=rankings[t]||{};
  return `<article class="card teamcard"><h3>${t} · ${teams[t]||"Team "+t}${t===team?" ⭐":""}</h3><div class="teamstats">
- <div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div><div class="tiny"><b>${rank(r.rank)}</b><span>Event</span></div>
+ <div class="tiny"><b>${rank(r.rank)}</b><span>Event</span></div><div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div>
  <div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div><div class="tiny"><b>${r.record||"—"}</b><span>Record</span></div>
  </div></article>`}).join(""):'<div class="empty">No teams match your search.</div>';
 }
@@ -286,8 +331,12 @@ async function refresh(force=false){
  if(hasApiKey())await loadTeamEvents({autoPick:false});
  render();$("status").innerHTML=`<span class="ok">Updated ${new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active")}));
-$("nextContent").addEventListener("click",e=>{if(e.target.closest("[data-open-settings]"))openSettings()});
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch()}));
+$("nextContent").addEventListener("click",e=>{
+ if(e.target.closest("[data-open-settings]"))openSettings();
+ if(e.target.closest("[data-open-power-help]"))openPowerHelp();
+});
+$("powerHelpBtn").addEventListener("click",openPowerHelp);
 $("refreshBtn").addEventListener("click",()=>refresh(true));
 $("eventSelect").addEventListener("change",()=>{
  setEventKey($("eventSelect").value,{manual:true});
@@ -309,5 +358,6 @@ $("saveBtn").addEventListener("click",async()=>{
 });
 $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
+$("teamSort").addEventListener("change",e=>{teamSort=e.target.value;renderTeams()});
 render();loadTeamEvents().then(()=>refresh());startRefreshTimer();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));

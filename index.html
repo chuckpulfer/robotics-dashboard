@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="IRI Dashboard">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=8">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=9">
   <title>Golden Gears IRI Dashboard</title>
 </head>
 <body>
@@ -24,8 +24,14 @@
 <section class="page active" id="page-next"><div id="nextContent"></div></section>
 <section class="page" id="page-matches"><h2 class="section-title">All matches</h2><div id="matchList"></div></section>
 <section class="page" id="page-teams">
-  <h2 class="section-title">Teams in our matches</h2>
+  <div class="titlebar"><h2>Teams in our matches</h2><button class="helpbtn" id="powerHelpBtn" type="button" aria-label="Explain OPR and power ratings">?</button></div>
   <label class="search" for="teamSearch">Search teams<input id="teamSearch" type="search" placeholder="Number or name" autocapitalize="none" spellcheck="false" enterkeyhint="search"></label>
+  <label class="search" for="teamSort">Sort by<select id="teamSort">
+    <option value="event">Event rank</option>
+    <option value="power">OPR rank</option>
+    <option value="number">Team number</option>
+    <option value="name">Team name</option>
+  </select></label>
   <div id="teamList"></div>
 </section>
 <section class="page" id="page-settings">
@@ -45,7 +51,15 @@
   </div></details>
   <details><summary>Offline cache</summary><div class="settings">
     <button class="iconbtn" id="clearBtn" type="button">Clear downloaded data</button>
-    <div class="note">The app shell remains available offline through the service worker. The most recently downloaded schedule, rankings, scores, and EPA remain in local storage.</div>
+    <div class="note">The app shell remains available offline through the service worker. The most recently downloaded schedule, rankings, scores, and power ratings remain in local storage.</div>
+  </div></details>
+  <details id="powerHelp"><summary>Power ratings explained (OPR &amp; EPA)</summary><div class="settings helpcopy">
+    <p id="powerHelpStatus"></p>
+    <p><strong>OPR</strong> (Offensive Power Rating) estimates how many points a team contributes to its alliance’s score in an average match. It is expressed in the same units as match scores.</p>
+    <p>TBA calculates OPR with least squares from completed qualification scores at an event. Each match is treated as an equation: the alliance score equals the sum of the OPRs for the three teams on that alliance. Solving the full set of equations yields one OPR per team at that event.</p>
+    <p><strong>Where this app gets OPR:</strong> when Statbotics EPA is unavailable, we download precomputed OPRs from The Blue Alliance API (<code>/event/{event_key}/oprs</code>) for the selected event. The <strong>OPR #</strong> column ranks teams at that event by OPR.</p>
+    <p><strong>EPA</strong> (Expected Points Added) comes from Statbotics when that service is online. It is a separate season-wide model and is usually shown with a world rank. The app prefers EPA first, then falls back to event OPR.</p>
+    <p><strong>Win estimates</strong> on the Next tab add up each alliance’s power rating (OPR or EPA) and convert the difference into a rough red/blue percentage. It is a quick scouting hint, not a guarantee.</p>
   </div></details>
 </section>
 </main>
@@ -58,5 +72,5 @@
   <button class="tab" data-page="settings">Settings</button>
 </nav>
 
-<script src="./assets/js/app.js?v=12"></script>
+<script src="./assets/js/app.js?v=17"></script>
 </body></html>
