@@ -157,6 +157,13 @@ function alliance(color,list){
  return `<div class="alliance ${color}"><div class="ahead">${color==="red"?"🔴 RED":"🔵 BLUE"} <span style="float:right" class="rankhead">${rankLabel}&nbsp;&nbsp;EVENT</span></div>${list.map(teamRow).join("")}</div>`;
 }
 function matchDone(m){return m.actual_time||m.post_result_time||Number.isFinite(m.redScore)}
+function fmtMatchTime(m){return m?.predicted_time?new Date(m.predicted_time*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):null}
+function matchStatus(m){
+ if(matchDone(m)&&Number.isFinite(m.redScore))return {text:`${m.redScore}–${m.blueScore}`,cls:"winner"};
+ if(matchDone(m))return {text:"Pending",cls:"pending"};
+ const t=fmtMatchTime(m);
+ return {text:t?`Est. ${t}`:"Time TBD",cls:"pending"};
+}
 function nextMatch(){
  const sorted=[...matches].sort((a,b)=>a.q-b.q); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
 }
@@ -168,16 +175,16 @@ function renderNext(){
  const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
  const m=nextMatch(); if(!m){$("nextContent").innerHTML=keyReminder+'<div class="empty">No matches loaded.</div>';return}
  const p=probability(m), mine=m.red.includes(team)?"RED":"BLUE";
- const when=m.predicted_time?new Date(m.predicted_time*1000):null;
+ const when=fmtMatchTime(m);
  $("nextContent").innerHTML=`${keyReminder}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">Qualification ${m.q}</div>
- <div class="countdown">${when?when.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"Time not posted"}</div>
+ <div class="countdown">${when?`Est. ${when}`:"Time not posted"}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div>`:""}
  ${alliance("red",m.red)}${alliance("blue",m.blue)}</div>
  <h2 class="section-title">After this</h2>${[...matches].filter(x=>x.q>m.q).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
 }
 function matchCard(m){
- const done=matchDone(m), score=done&&Number.isFinite(m.redScore)?`${m.redScore}–${m.blueScore}`:"Pending";
- return `<article class="card"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${done?"winner":"pending"}">${score}</span></div>${alliance("red",m.red)}${alliance("blue",m.blue)}</article>`;
+ const status=matchStatus(m);
+ return `<article class="card"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${status.cls}">${status.text}</span></div>${alliance("red",m.red)}${alliance("blue",m.blue)}</article>`;
 }
 function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
 function renderTeams(){
