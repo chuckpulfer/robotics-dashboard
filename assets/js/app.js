@@ -153,13 +153,25 @@ function teamRow(t){
  const s=epa[t]||{}, r=rankings[t];
  return `<div class="teamrow ${t===team?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
 }
-function alliance(color,list){
- return `<div class="alliance ${color}"><div class="ahead">${color==="red"?"🔴 RED":"🔵 BLUE"} <span style="float:right" class="rankhead">${rankLabel}&nbsp;&nbsp;EVENT</span></div>${list.map(teamRow).join("")}</div>`;
+function alliance(color,list,won=false){
+ const win=won?" · WIN":"";
+ return `<div class="alliance ${color}${won?" won":""}"><div class="ahead">${color==="red"?"🔴 RED":"🔵 BLUE"}${win} <span style="float:right" class="rankhead">${rankLabel}&nbsp;&nbsp;EVENT</span></div>${list.map(teamRow).join("")}</div>`;
 }
 function matchDone(m){return m.actual_time||m.post_result_time||Number.isFinite(m.redScore)}
+function matchHasScore(m){return matchDone(m)&&Number.isFinite(m.redScore)&&Number.isFinite(m.blueScore)}
+function matchWinner(m){
+ if(!matchHasScore(m))return null;
+ if(m.redScore>m.blueScore)return "red";
+ if(m.blueScore>m.redScore)return "blue";
+ return "tie";
+}
 function fmtMatchTime(m){return m?.predicted_time?new Date(m.predicted_time*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):null}
-function matchStatus(m){
- if(matchDone(m)&&Number.isFinite(m.redScore))return {text:`${m.redScore}–${m.blueScore}`,cls:"winner"};
+function matchScoreboard(m){
+ const w=matchWinner(m);
+ return `<div class="scoreboard"><div class="scorebox red${w==="red"?" won":""}"><span class="scorelabel">Red</span><b>${m.redScore}</b></div><div class="scorebox blue${w==="blue"?" won":""}"><span class="scorelabel">Blue</span><b>${m.blueScore}</b></div></div>`;
+}
+function matchCardMeta(m){
+ if(matchHasScore(m))return {text:matchWinner(m)==="tie"?"Tie":"Final",cls:"winner"};
  if(matchDone(m))return {text:"Pending",cls:"pending"};
  const t=fmtMatchTime(m);
  return {text:t?`Est. ${t}`:"Time TBD",cls:"pending"};
@@ -179,12 +191,13 @@ function renderNext(){
  $("nextContent").innerHTML=`${keyReminder}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">Qualification ${m.q}</div>
  <div class="countdown">${when?`Est. ${when}`:"Time not posted"}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div>`:""}
- ${alliance("red",m.red)}${alliance("blue",m.blue)}</div>
+ ${matchHasScore(m)?matchScoreboard(m):""}
+ ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>
  <h2 class="section-title">After this</h2>${[...matches].filter(x=>x.q>m.q).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
 }
 function matchCard(m){
- const status=matchStatus(m);
- return `<article class="card"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${status.cls}">${status.text}</span></div>${alliance("red",m.red)}${alliance("blue",m.blue)}</article>`;
+ const meta=matchCardMeta(m), w=matchWinner(m);
+ return `<article class="card${matchHasScore(m)?" played":""}"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${meta.cls}">${meta.text}</span></div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</article>`;
 }
 function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
 function renderTeams(){
