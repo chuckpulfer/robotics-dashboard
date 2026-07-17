@@ -8,63 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="IRI Dashboard">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=7">
   <title>Golden Gears IRI Dashboard</title>
-  <style>
-    :root {
-      --bg:#f3f4f6; --panel:#fff; --text:#111827; --muted:#6b7280; --line:#d1d5db;
-      --gold:#a16207; --goldbg:#fef3c7; --red:#b91c1c; --redbg:#fee2e2;
-      --blue:#1d4ed8; --bluebg:#dbeafe; --green:#047857; --orange:#b45309;
-    }
-    @media(prefers-color-scheme:dark){
-      :root{--bg:#07101f;--panel:#111827;--text:#f9fafb;--muted:#9ca3af;--line:#374151;
-      --gold:#fde68a;--goldbg:#422006;--red:#fca5a5;--redbg:#3f1518;
-      --blue:#93c5fd;--bluebg:#172554;--green:#6ee7b7;--orange:#fcd34d;}
-    }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-    button,input{font:inherit} button{color:inherit}
-    .app{width:min(100%,720px);margin:auto;padding:env(safe-area-inset-top) 12px calc(82px + env(safe-area-inset-bottom))}
-    header{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 94%,transparent);
-      backdrop-filter:blur(12px);padding:12px 0 10px}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-    h1{font-size:20px;margin:0} .sub,.muted{color:var(--muted)} .sub{font-size:13px;margin-top:2px}
-    .iconbtn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 11px}
-    .status{font-size:12px;margin-top:8px;padding:7px 9px;border:1px solid var(--line);
-      background:var(--panel);border-radius:9px} .ok{color:var(--green)} .warn{color:var(--orange)}
-    .hero{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:14px;margin-bottom:12px}
-    .eyebrow{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-    .hero-title{font-size:28px;font-weight:800;margin:3px 0} .countdown{font-size:14px;color:var(--gold);font-weight:700}
-    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
-    .metric{border:1px solid var(--line);border-radius:12px;padding:9px;text-align:center}
-    .metric b{display:block;font-size:20px} .metric span{font-size:11px;color:var(--muted)}
-    .alliance{border-radius:12px;overflow:hidden;margin-top:9px} .alliance.red{background:var(--redbg)} .alliance.blue{background:var(--bluebg)}
-    .ahead{font-size:12px;font-weight:800;padding:8px 9px 4px} .red .ahead{color:var(--red)} .blue .ahead{color:var(--blue)}
-    .teamrow{display:grid;grid-template-columns:minmax(0,1fr) 46px 46px;gap:6px;padding:7px 9px;
-      border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent);align-items:center}
-    .teamrow.mine{background:var(--goldbg)} .identity{min-width:0;display:flex;gap:7px;align-items:baseline}
-    .tnum{font-weight:800;min-width:48px} .tname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
-    .rank{text-align:right;font-variant-numeric:tabular-nums;font-size:13px} .rankhead{color:var(--muted);font-size:10px}
-    .section-title{font-size:17px;margin:16px 2px 8px} .card{border:1px solid var(--line);background:var(--panel);
-      border-radius:14px;overflow:hidden;margin-bottom:9px} .cardhead{display:flex;justify-content:space-between;padding:10px 11px;font-weight:750}
-    .score{font-variant-numeric:tabular-nums} .winner{color:var(--green)} .pending{color:var(--muted)}
-    .teamcard{padding:11px} .teamcard h3{margin:0 0 8px;font-size:17px} .teamstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-    .tiny{border:1px solid var(--line);border-radius:9px;padding:7px;text-align:center} .tiny b{display:block} .tiny span{font-size:10px;color:var(--muted)}
-    .tabs{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(100%,720px);
-      display:grid;grid-template-columns:repeat(4,1fr);background:color-mix(in srgb,var(--panel) 96%,transparent);
-      border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));backdrop-filter:blur(14px);z-index:20}
-    .tab{border:0;background:transparent;padding:8px 4px;border-radius:9px;font-size:12px} .tab.active{background:var(--goldbg);color:var(--gold);font-weight:800}
-    .page{display:none} .page.active{display:block} details{border:1px solid var(--line);background:var(--panel);border-radius:12px;margin-bottom:10px}
-    summary{padding:11px;font-weight:700} .settings{padding:0 11px 11px;display:grid;gap:9px}
-    label{font-size:12px;color:var(--muted);display:grid;gap:4px} input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px;background:var(--bg);color:var(--text)}
-    .primary{border:0;border-radius:10px;padding:10px;background:var(--gold);color:#111827;font-weight:800}
-    .note{font-size:12px;color:var(--muted);line-height:1.4} .empty{padding:30px 12px;text-align:center;color:var(--muted)}
-  </style>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="top"><div><h1>Golden Gears IRI</h1><div class="sub">Team 10021 live dashboard</div></div>
+  <div class="top"><div><h1>Golden Gears IRI</h1><div class="sub" id="appSub">Team 10021 live dashboard</div></div>
   <button class="iconbtn" id="refreshBtn" type="button">Refresh</button></div>
   <div class="status" id="status">Loading cached data…</div>
 </header>
@@ -72,15 +23,25 @@
 <main>
 <section class="page active" id="page-next"><div id="nextContent"></div></section>
 <section class="page" id="page-matches"><h2 class="section-title">All matches</h2><div id="matchList"></div></section>
-<section class="page" id="page-teams"><h2 class="section-title">Teams in our matches</h2><div id="teamList"></div></section>
+<section class="page" id="page-teams">
+  <h2 class="section-title">Teams in our matches</h2>
+  <label class="search" for="teamSearch">Search teams<input id="teamSearch" type="search" placeholder="Number or name" autocapitalize="none" spellcheck="false" enterkeyhint="search"></label>
+  <div id="teamList"></div>
+</section>
 <section class="page" id="page-settings">
   <h2 class="section-title">Settings</h2>
   <details open><summary>Event and API</summary><div class="settings">
-    <label>Event key<input id="eventKey" value="2026inind" autocapitalize="none" spellcheck="false"></label>
-    <label>TBA read API key<input id="tbaKey" type="password"></label>
-    <label>Auto refresh seconds<input id="refreshSeconds" type="number" min="15" max="600" value="30"></label>
+    <label>Your team number<input id="teamNumber" type="number" min="1" max="99999" value="10021"></label>
+    <label id="eventSelectWrap">Event<select id="eventSelect"></select></label>
+    <div class="note" id="eventAutoNote">Loads every event your team attends from The Blue Alliance (district, regional, state, offseason, and more). Events are cached locally and grouped by season. The app auto-selects whichever event is happening today.</div>
+    <div class="note" id="eventKeyNote"></div>
+    <label id="eventKeyWrap" hidden>Event key<input id="eventKey" value="2026iri" autocapitalize="none" spellcheck="false"></label>
+    <div class="note" id="eventKeyHelp" hidden>The Blue Alliance code for the event you are at, such as <strong>2026iri</strong>. Copy it from the event URL on <a href="https://www.thebluealliance.com/events/2026" target="_blank" rel="noopener">thebluealliance.com</a> (the part after <strong>/event/</strong>).</div>
+    <label>TBA read API key<input id="tbaKey" type="password" autocomplete="off"></label>
+    <div class="note">A personal read-only key from The Blue Alliance. It lets this app download schedules, rankings, team names, and OPRs. Create one for free on your <a href="https://www.thebluealliance.com/account" target="_blank" rel="noopener">TBA account page</a>. The key stays in this browser only and is never committed to the repo.</div>
+    <label>Auto refresh seconds<input id="refreshSeconds" type="number" min="15" max="3600" value="300"></label>
+    <div class="note">Default is 300 seconds (5 minutes).</div>
     <button class="primary" id="saveBtn" type="button">Save and refresh</button>
-    <div class="note">Data is cached locally. TBA responses use ETags; unchanged schedules and rankings are not downloaded again. The embedded key is visible to anyone who can access the site source.</div>
   </div></details>
   <details><summary>Offline cache</summary><div class="settings">
     <button class="iconbtn" id="clearBtn" type="button">Clear downloaded data</button>
@@ -97,110 +58,5 @@
   <button class="tab" data-page="settings">Settings</button>
 </nav>
 
-<script>
-const TEAM=10021, YEAR=2026, DEFAULT_KEY="Boy3EDV3BoFNkwQYcxkePtrquIyHXhpbsFH2ZeKOm7f5pMl9698bWQdqvRVGdJok";
-const K={config:"gg_config_v1",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1"};
-const FALLBACK=[
-{key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
-{key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
-{key:"qm17",q:17,red:[1720,10021,1002],blue:[3414,1741,1706]},
-{key:"qm27",q:27,red:[1792,1768,8608],blue:[5687,4028,10021]},
-{key:"qm37",q:37,red:[234,10021,5907],blue:[1023,27,1987]},
-{key:"qm46",q:46,red:[10021,1732,1792],blue:[11415,6721,3940]},
-{key:"qm52",q:52,red:[2468,2481,1261],blue:[10021,1987,11415]},
-{key:"qm61",q:61,red:[4499,11415,7890],blue:[9401,484,10021]}
-];
-const NAMES={27:"Team RUSH",234:"Cyber Blue",359:"Hawaiian Kids",469:"Las Guerrillas",484:"Roboforce",1002:"CircuitRunners",1023:"Bedford Express",1024:"Kil-A-Bytes",1261:"Robo Lions",1706:"Ratchet Rockers",1720:"PhyXTGears",1732:"Hilltoppers",1741:"Red Alert",1768:"Robo Chiefs",1792:"Round Table",1987:"Broncobots",2056:"OP Robotics",2377:"C Company",2468:"Team Appreciate",2481:"Roboteers",2767:"Stryke Force",3176:"Purple Precision",3414:"Hacks Tech",3641:"Flying Toasters",3940:"CyberTooth",4028:"Beak Squad",4499:"Highlanders",5687:"The Outliers",5907:"Cygnet",6721:"Tindley",7890:"TechnoNerds",8085:"MOJO",8608:"Alpha Bots",9401:"Knights",10021:"Golden Gears",11415:"Storm Surge"};
-const $=id=>document.getElementById(id);
-const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
-const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-let config=load(K.config,{eventKey:"2026inind",tbaKey:DEFAULT_KEY,refreshSeconds:30});
-let matches=load(K.matches,FALLBACK), rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
-$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||DEFAULT_KEY;$("refreshSeconds").value=config.refreshSeconds||30;
-
-function tn(k){return Number(String(k||"").replace("frc",""))}
-function fmt(n,d=1){return Number.isFinite(+n)?(+n).toFixed(d):"—"}
-function rank(n){return Number.isFinite(+n)?`#${+n}`:"—"}
-function allTeams(){return [...new Set(matches.flatMap(m=>[...m.red,...m.blue]))]}
-function teamRow(t){
- const s=epa[t]||{}, r=rankings[t];
- return `<div class="teamrow ${t===TEAM?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===TEAM?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
-}
-function alliance(color,list){
- return `<div class="alliance ${color}"><div class="ahead">${color==="red"?"🔴 RED":"🔵 BLUE"} <span style="float:right" class="rankhead">WORLD&nbsp;&nbsp;EVENT</span></div>${list.map(teamRow).join("")}</div>`;
-}
-function matchDone(m){return m.actual_time||m.post_result_time||Number.isFinite(m.redScore)}
-function nextMatch(){
- const sorted=[...matches].sort((a,b)=>a.q-b.q); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
-}
-function probability(m){
- const re=m.red.reduce((a,t)=>a+(+epa[t]?.total||0),0), be=m.blue.reduce((a,t)=>a+(+epa[t]?.total||0),0);
- if(!re&&!be)return null; const p=1/(1+Math.exp(-(re-be)/12)); return {red:Math.round(p*100),blue:Math.round((1-p)*100),re,be};
-}
-function renderNext(){
- const m=nextMatch(); if(!m){$("nextContent").innerHTML='<div class="empty">No matches loaded.</div>';return}
- const p=probability(m), mine=m.red.includes(TEAM)?"RED":"BLUE";
- const when=m.predicted_time?new Date(m.predicted_time*1000):null;
- $("nextContent").innerHTML=`<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">Qualification ${m.q}</div>
- <div class="countdown">${when?when.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"Time not posted"}</div>
- ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red EPA</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue EPA</span></div></div>`:""}
- ${alliance("red",m.red)}${alliance("blue",m.blue)}</div>
- <h2 class="section-title">After this</h2>${[...matches].filter(x=>x.q>m.q).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
-}
-function matchCard(m){
- const done=matchDone(m), score=done&&Number.isFinite(m.redScore)?`${m.redScore}–${m.blueScore}`:"Pending";
- return `<article class="card"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${done?"winner":"pending"}">${score}</span></div>${alliance("red",m.red)}${alliance("blue",m.blue)}</article>`;
-}
-function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
-function renderTeams(){
- $("teamList").innerHTML=allTeams().sort((a,b)=>(epa[a]?.rank??99999)-(epa[b]?.rank??99999)).map(t=>{
- const s=epa[t]||{},r=rankings[t]||{};
- return `<article class="card teamcard"><h3>${t} · ${teams[t]||"Team "+t}${t===TEAM?" ⭐":""}</h3><div class="teamstats">
- <div class="tiny"><b>${rank(s.rank)}</b><span>World</span></div><div class="tiny"><b>${rank(r.rank)}</b><span>Event</span></div>
- <div class="tiny"><b>${fmt(s.total)}</b><span>EPA</span></div><div class="tiny"><b>${r.record||"—"}</b><span>Record</span></div>
- </div></article>`}).join("");
-}
-function render(){renderNext();renderMatches();renderTeams()}
-async function api(url,etagKey){
- const h={"X-TBA-Auth-Key":config.tbaKey}; if(etags[etagKey])h["If-None-Match"]=etags[etagKey];
- const r=await fetch(url,{headers:h,cache:"no-store"}); if(r.status===304)return null;if(!r.ok)throw Error(`TBA ${r.status}`);
- const e=r.headers.get("ETag");if(e){etags[etagKey]=e;save(K.etags,etags)}return r.json();
-}
-async function refresh(force=false){
- $("status").innerHTML='<span class="warn">Refreshing live data…</span>'; const notes=[];
- try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`m:${config.eventKey}`);
-  if(data){
-   matches=data.filter(x=>x.comp_level==="qm"&&(x.alliances.red.team_keys.includes("frc"+TEAM)||x.alliances.blue.team_keys.includes("frc"+TEAM))).map(x=>({
-    key:x.key,q:x.match_number,red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
-    redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
-    predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
-   }));save(K.matches,matches);notes.push("matches updated")
-  }else notes.push("matches unchanged");
- }catch(e){notes.push("matches cached")}
- try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/rankings`,`r:${config.eventKey}`);
-  if(data){const n={};(data.rankings||[]).forEach(x=>{const t=tn(x.team_key);n[t]={rank:x.rank,record:`${x.record?.wins??0}-${x.record?.losses??0}-${x.record?.ties??0}`}});rankings=n;save(K.rankings,n);notes.push("ranks updated")}else notes.push("ranks unchanged");
- }catch(e){notes.push("ranks cached")}
- try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/teams/simple`,`t:${config.eventKey}`);
-  if(data){data.forEach(x=>teams[tn(x.key)]=x.nickname||x.name);save(K.teams,teams);notes.push("names updated")}
- }catch(e){notes.push("names cached")}
- const ids=allTeams(); let good=0;
- await Promise.allSettled(ids.map(async t=>{try{
-  const r=await fetch(`https://api.statbotics.io/v3/team_year/${t}/${YEAR}`,{cache:"no-store"});if(!r.ok)throw 0;const d=await r.json();
-  const total=+(d.epa?.total_points?.mean??d.epa?.total_points??d.epa?.mean??d.epa?.total??NaN);
-  const wr=+(d.epa?.ranks?.total?.rank??d.epa?.rank?.total??d.epa_rank??NaN);
-  epa[t]={total:Number.isFinite(total)?total:epa[t]?.total,rank:Number.isFinite(wr)?wr:epa[t]?.rank};good++;
- }catch{}}));
- if(good){save(K.epa,epa);notes.push(`${good} EPA checked`)}else notes.push("EPA cached");
- render();$("status").innerHTML=`<span class="ok">Updated ${new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</span> · ${notes.join(" · ")}`;
-}
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active")}));
-$("refreshBtn").addEventListener("click",()=>refresh(true));
-$("saveBtn").addEventListener("click",()=>{config={eventKey:$("eventKey").value.trim(),tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||30)};save(K.config,config);refresh(true)});
-$("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
-render();refresh();setInterval(()=>refresh(),Math.max(15,config.refreshSeconds||30)*1000);
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-</script>
+<script src="./assets/js/app.js?v=10"></script>
 </body></html>
