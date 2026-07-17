@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1"};
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -20,11 +20,59 @@ let teamEvents=(()=>{const c=load(K.teamEvents,null);return c?.team===team?c.eve
 let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
+let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=team;
+let allMatches=load(K.allMatches,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
-$("teamNumber").value=team;$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("teamSort").value=teamSort;$("statboticsEnabled").checked=!!config.statbotics;
+setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
 
 function hasApiKey(){return!!config.tbaKey?.trim()}
+function teamDirectory(){return {...NAMES,...(allTeamsCache?.teams||{}),...teams}}
+async function loadAllTeams(force=false){
+ if(!hasApiKey()||allTeamsLoading)return;
+ if(!force&&allTeamsCache)return;
+ allTeamsLoading=true;
+ const t={};
+ await Promise.allSettled([...Array(26).keys()].map(async p=>{
+  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store"});
+  if(!r.ok)return;
+  (await r.json()).forEach(x=>{t[tn(x.key)]=x.nickname||x.name});
+ }));
+ allTeamsLoading=false;
+ if(Object.keys(t).length){
+  allTeamsCache={updated:Date.now(),teams:t};save(K.allTeams,allTeamsCache);
+  if(document.activeElement===$("teamPicker"))renderTeamPickerList();
+ }
+ updateTeamDirNote();
+}
+function updateTeamDirNote(){
+ const n=Object.keys(allTeamsCache?.teams||{}).length;
+ $("teamDirNote").textContent=n?`${n} teams cached · updated ${new Date(allTeamsCache.updated).toLocaleDateString()}`:hasApiKey()?"Team directory not downloaded yet.":"Add a TBA API key to download the full team directory.";
+}
+function teamPickerMatches(q){
+ const s=(q||"").toLowerCase().trim();
+ if(!s)return [];
+ const dir=teamDirectory(), numeric=/^\d+$/.test(s);
+ return Object.entries(dir)
+  .filter(([n,name])=>numeric?String(n).startsWith(s):(name||"").toLowerCase().includes(s)||String(n).startsWith(s))
+  .sort((a,b)=>+a[0]-+b[0]).slice(0,25);
+}
+function setPickerTeam(n){
+ selectedTeam=+n;
+ const name=teamDirectory()[n];
+ $("teamPicker").value=`${n}${name?" · "+name:""}`;
+ $("teamPickerList").hidden=true;
+}
+function pickerTeamValue(){
+ const m=$("teamPicker").value.trim().match(/^\d+/);
+ return m?+m[0]:selectedTeam;
+}
+function renderTeamPickerList(){
+ const list=$("teamPickerList"), items=teamPickerMatches($("teamPicker").value);
+ if(!items.length){list.hidden=true;list.innerHTML="";return}
+ list.innerHTML=items.map(([n,name])=>`<button type="button" data-team="${n}"><b>${n}</b><span>${name||"Team "+n}</span></button>`).join("");
+ list.hidden=false;
+}
 function todayYmd(){
  const d=new Date();
  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -160,14 +208,15 @@ syncPowerLabels();
 function tn(k){return Number(String(k||"").replace("frc",""))}
 function fmt(n,d=1){return Number.isFinite(+n)?(+n).toFixed(d):"—"}
 function rank(n){return Number.isFinite(+n)?`#${+n}`:"—"}
-function allTeams(){return [...new Set(matches.flatMap(m=>[...m.red,...m.blue]))]}
+function allTeams(){return [...new Set(matches.flatMap(m=>[...m.red,...m.blue]))]};
+function allEventTeams(){return Object.keys(rankings).map(Number).sort((a,b)=>a-b)}
 function teamMatchesSearch(t,q){
  if(!q)return true;
  const name=(teams[t]||"").toLowerCase(), query=q.toLowerCase().trim();
  return String(t).includes(query)||name.includes(query);
 }
 function sortedTeams(){
- const list=allTeams();
+ const list=allEventTeams();
  return list.sort((a,b)=>{
   if(teamSort==="number")return a-b;
   if(teamSort==="event")return (rankings[a]?.rank??99999)-(rankings[b]?.rank??99999)||(epa[a]?.rank??99999)-(epa[b]?.rank??99999)||a-b;
@@ -178,6 +227,10 @@ function sortedTeams(){
 function teamRow(t){
  const s=epa[t]||{}, r=rankings[t];
  return `<div class="teamrow ${t===team?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
+}
+function teamTableRow(t){
+ const s=epa[t]||{}, r=rankings[t]||{};
+ return `<div class="team-item ${t===team?"my-team":""}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div></div>`;
 }
 function alliance(color,list,won=false){
  const win=won?" · WIN":"";
@@ -242,19 +295,36 @@ function renderNext(){
 }
 function matchCard(m){
  const meta=matchCardMeta(m), w=matchWinner(m);
- return `<article class="card${matchHasScore(m)?" played":""}" id="match-${m.key}"><div class="cardhead"><span>Qualification ${m.q}</span><span class="score ${meta.cls}">${meta.text}</span></div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</article>`;
+ return `<div class="hero" id="match-${m.key}"><div class="eyebrow">Qualification ${m.q}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
 }
 function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
+function closestMatchToNow(allMatches){
+ const now=Date.now()/1000;
+ return allMatches.sort((a,b)=>{
+  const aDist=Math.abs((a.predicted_time||a.actual_time||a.post_result_time||0)-now);
+  const bDist=Math.abs((b.predicted_time||b.actual_time||b.post_result_time||0)-now);
+  return aDist-bDist;
+ })[0];
+}
+async function renderAllMatches(){
+ const eventMatches=allMatches[config.eventKey]||await fetchAllEventMatches();
+ if(!eventMatches.length){
+  $("allMatchList").innerHTML=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load the full event schedule.</div>':'<div class="empty">No event matches loaded yet.</div>';
+  return;
+ }
+ $("allMatchList").innerHTML=[...eventMatches].sort((a,b)=>a.q-b.q).map(matchCard).join("");
+ const closest=closestMatchToNow(eventMatches);
+ if(closest?.key)requestAnimationFrame(()=>document.getElementById("match-"+closest.key)?.scrollIntoView({behavior:"auto",block:"center"}));
+}
 function renderTeams(){
  const q=teamSearch, list=sortedTeams().filter(t=>teamMatchesSearch(t,q));
- $("teamList").innerHTML=list.length?list.map(t=>{
- const s=epa[t]||{},r=rankings[t]||{};
- return `<article class="card teamcard"><h3>${t} · ${teams[t]||"Team "+t}${t===team?" ⭐":""}</h3><div class="teamstats">
- <div class="tiny"><b>${rank(r.rank)}</b><span>Event</span></div><div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div>
- <div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div><div class="tiny"><b>${r.record||"—"}</b><span>Record</span></div>
- </div></article>`}).join(""):'<div class="empty">No teams match your search.</div>';
+ if(!list.length){$("teamList").innerHTML='<div class="empty">No teams match your search.</div>';return}
+ $("teamList").innerHTML=`<div class="teams-header">
+ <button data-sort="number" class="header-btn ${teamSort==="number"?"active":""}">Team</button><button data-sort="name" class="header-btn ${teamSort==="name"?"active":""}">Name</button>
+ <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button>
+ </div>${list.map(teamTableRow).join("")}`;
 }
-function render(){renderHeader();renderNext();renderMatches();renderTeams()}
+function render(){renderHeader();renderNext();renderMatches();renderAllMatches();renderTeams()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(state){
@@ -282,6 +352,23 @@ async function fetchStatbotics(ids){
   epa[t]={total:Number.isFinite(total)?total:epa[t]?.total,rank:Number.isFinite(wr)?wr:epa[t]?.rank,source:"epa"};good++;
  }catch{}}));
  return good;
+}
+async function fetchAllEventMatches(){
+ if(!hasApiKey())return [];
+ try{
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`am:${config.eventKey}`);
+  if(data){
+   const all=data.filter(x=>x.comp_level==="qm").map(x=>({
+    key:x.key,q:x.match_number,red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
+    redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
+    predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
+   }));
+   allMatches[config.eventKey]=all;
+   save(K.allMatches,allMatches);
+   return all;
+  }
+ }catch{}
+ return allMatches[config.eventKey]||[];
 }
 async function fetchTbaOprs(ids){
  if(!hasApiKey())return 0;
@@ -331,27 +418,47 @@ async function refresh(force=false){
  }
  await refreshPowerRatings(allTeams(),notes);
  if(hasApiKey())await loadTeamEvents({autoPick:false});
+ await fetchAllEventMatches();
  render();$("status").innerHTML=`<span class="ok">Updated ${new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch()}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches()}));
 $("nextContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
  if(e.target.closest("[data-open-power-help]"))openPowerHelp();
+});
+$("allMatchList").addEventListener("click",e=>{
+ if(e.target.closest("[data-open-settings]"))openSettings();
 });
 $("powerHelpBtn").addEventListener("click",openPowerHelp);
 $("refreshBtn").addEventListener("click",()=>refresh(true));
 $("eventSelect").addEventListener("change",()=>{
  setEventKey($("eventSelect").value,{manual:true});
  localStorage.removeItem(K.matches);matches=[];
+ delete allMatches[config.eventKey];
  refresh(true);
+});
+$("teamPicker").addEventListener("input",renderTeamPickerList);
+$("teamPicker").addEventListener("focus",()=>{loadAllTeams();renderTeamPickerList()});
+$("teamPicker").addEventListener("blur",()=>setTimeout(()=>{$("teamPickerList").hidden=true},150));
+$("teamPickerList").addEventListener("pointerdown",e=>{
+ const b=e.target.closest("[data-team]");
+ if(b){e.preventDefault();setPickerTeam(+b.dataset.team)}
+});
+$("refreshTeamsBtn").addEventListener("click",async()=>{
+ const b=$("refreshTeamsBtn");
+ if(!hasApiKey()){updateTeamDirNote();return}
+ b.disabled=true;b.textContent="Downloading…";
+ await loadAllTeams(true);
+ b.disabled=false;b.textContent="Update team list";
 });
 $("saveBtn").addEventListener("click",async()=>{
  setSaveButtonState("busy");
  try{
-  const nextTeam=Math.max(1,+$("teamNumber").value||DEFAULT_TEAM), teamChanged=nextTeam!==team;
+  const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
   config={eventKey:($("eventSelect").value||$("eventKey").value).trim(),tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),team:nextTeam,eventManual:config.eventManual,statbotics:$("statboticsEnabled").checked};
   save(K.config,config);team=nextTeam;
   if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
+  setPickerTeam(team);
   await loadTeamEvents({autoPick:teamChanged||!config.eventManual});
   await refresh(true);
   startRefreshTimer();
@@ -360,6 +467,9 @@ $("saveBtn").addEventListener("click",async()=>{
 });
 $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
-$("teamSort").addEventListener("change",e=>{teamSort=e.target.value;renderTeams()});
+$("teamList").addEventListener("click",e=>{
+ const btn=e.target.closest("[data-sort]");
+ if(btn){teamSort=btn.dataset.sort;renderTeams()}
+});
 render();loadTeamEvents().then(()=>refresh());startRefreshTimer();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));

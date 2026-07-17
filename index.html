@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="IRI Dashboard">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=10">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=13">
   <title>Golden Gears IRI Dashboard</title>
 </head>
 <body>
@@ -22,22 +22,24 @@
 
 <main>
 <section class="page active" id="page-next"><div id="nextContent"></div></section>
-<section class="page" id="page-matches"><h2 class="section-title">All matches</h2><div id="matchList"></div></section>
+<section class="page" id="page-matches"><div id="matchList"></div></section>
+<section class="page" id="page-allmatches"><div id="allMatchList"></div></section>
 <section class="page" id="page-teams">
-  <div class="titlebar"><h2>Teams in our matches</h2><button class="helpbtn" id="powerHelpBtn" type="button" aria-label="Explain OPR and power ratings">?</button></div>
-  <label class="search" for="teamSearch">Search teams<input id="teamSearch" type="search" placeholder="Number or name" autocapitalize="none" spellcheck="false" enterkeyhint="search"></label>
-  <label class="search" for="teamSort">Sort by<select id="teamSort">
-    <option value="event">Event rank</option>
-    <option value="power">OPR rank</option>
-    <option value="number">Team number</option>
-    <option value="name">Team name</option>
-  </select></label>
-  <div id="teamList"></div>
+  <div class="teams-sticky">
+    <div class="titlebar"><h2>Event teams</h2><button class="helpbtn" id="powerHelpBtn" type="button" aria-label="Explain OPR and power ratings">?</button></div>
+    <div class="teams-controls">
+      <input id="teamSearch" type="search" placeholder="Search by number or name" autocapitalize="none" spellcheck="false" enterkeyhint="search">
+    </div>
+  </div>
+  <div id="teamList" class="teams-grid"></div>
 </section>
 <section class="page" id="page-settings">
   <h2 class="section-title">Settings</h2>
   <details open><summary>Event and API</summary><div class="settings">
-    <label>Your team number<input id="teamNumber" type="number" min="1" max="99999" value="10021"></label>
+    <label class="combo">Your team<input id="teamPicker" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type a team number or name" enterkeyhint="search"><div class="combolist" id="teamPickerList" hidden></div></label>
+    <div class="note">Search by team number or name and pick your team from the list. With a TBA API key, the full FRC team directory downloads once and stays cached until you update it.</div>
+    <button class="iconbtn" id="refreshTeamsBtn" type="button">Update team list</button>
+    <div class="note" id="teamDirNote"></div>
     <label id="eventSelectWrap">Event<select id="eventSelect"></select></label>
     <div class="note" id="eventAutoNote">Loads every event your team attends from The Blue Alliance (district, regional, state, offseason, and more). Events are cached locally and grouped by season. The app auto-selects whichever event is happening today.</div>
     <div class="note" id="eventKeyNote"></div>
@@ -69,10 +71,11 @@
 
 <nav class="tabs" aria-label="Dashboard sections">
   <button class="tab active" data-page="next">Next</button>
-  <button class="tab" data-page="matches">Matches</button>
+  <button class="tab" data-page="matches">My Matches</button>
+  <button class="tab" data-page="allmatches">All Matches</button>
   <button class="tab" data-page="teams">Teams</button>
   <button class="tab" data-page="settings">Settings</button>
 </nav>
 
-<script src="./assets/js/app.js?v=18"></script>
+<script src="./assets/js/app.js?v=21"></script>
 </body></html>
