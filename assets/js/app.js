@@ -14,14 +14,14 @@ const NAMES={27:"Team RUSH",234:"Cyber Blue",359:"Hawaiian Kids",469:"Las Guerri
 const $=id=>document.getElementById(id);
 const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false});
+let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false});
 let team=+config.team||DEFAULT_TEAM;
 let teamEvents=(()=>{const c=load(K.teamEvents,null);return c?.team===team?c.events||[]:[]})();
 let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
-$("teamNumber").value=team;$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("teamSort").value=teamSort;
+$("teamNumber").value=team;$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("teamSort").value=teamSort;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
 
 function hasApiKey(){return!!config.tbaKey?.trim()}
@@ -295,8 +295,10 @@ async function fetchTbaOprs(ids){
  return ids.filter(t=>Number.isFinite(epa[t]?.total)).length;
 }
 async function refreshPowerRatings(ids,notes){
- const epaGood=await fetchStatbotics(ids);
- if(epaGood){save(K.epa,epa);syncPowerLabels();notes.push(`${epaGood} EPA`);return}
+ if(config.statbotics){
+  const epaGood=await fetchStatbotics(ids);
+  if(epaGood){save(K.epa,epa);syncPowerLabels();notes.push(`${epaGood} EPA`);return}
+ }
  try{
   const data=await fetchTbaOprs(ids);
   if(data){save(K.epa,epa);syncPowerLabels();notes.push(`${data} OPR from TBA`);return}
@@ -347,7 +349,7 @@ $("saveBtn").addEventListener("click",async()=>{
  setSaveButtonState("busy");
  try{
   const nextTeam=Math.max(1,+$("teamNumber").value||DEFAULT_TEAM), teamChanged=nextTeam!==team;
-  config={eventKey:($("eventSelect").value||$("eventKey").value).trim(),tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),team:nextTeam,eventManual:config.eventManual};
+  config={eventKey:($("eventSelect").value||$("eventKey").value).trim(),tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),team:nextTeam,eventManual:config.eventManual,statbotics:$("statboticsEnabled").checked};
   save(K.config,config);team=nextTeam;
   if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
   await loadTeamEvents({autoPick:teamChanged||!config.eventManual});

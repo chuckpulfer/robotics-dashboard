@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="IRI Dashboard">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=9">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=10">
   <title>Golden Gears IRI Dashboard</title>
 </head>
 <body>
@@ -47,6 +47,8 @@
     <div class="note">A personal read-only key from The Blue Alliance. It lets this app download schedules, rankings, team names, and OPRs. Create one for free on your <a href="https://www.thebluealliance.com/account" target="_blank" rel="noopener">TBA account page</a>. The key stays in this browser only and is never committed to the repo.</div>
     <label>Auto refresh seconds<input id="refreshSeconds" type="number" min="15" max="3600" value="300"></label>
     <div class="note">Default is 300 seconds (5 minutes).</div>
+    <label class="check"><input id="statboticsEnabled" type="checkbox"> Enable Statbotics EPA</label>
+    <div class="note">When enabled, the app prefers season-wide EPA from Statbotics and falls back to TBA event OPR. Disabled by default, so the app uses TBA OPR only.</div>
     <button class="primary" id="saveBtn" type="button">Save and refresh</button>
   </div></details>
   <details><summary>Offline cache</summary><div class="settings">
@@ -72,5 +74,5 @@
   <button class="tab" data-page="settings">Settings</button>
 </nav>
 
-<script src="./assets/js/app.js?v=17"></script>
+<script src="./assets/js/app.js?v=18"></script>
 </body></html>
