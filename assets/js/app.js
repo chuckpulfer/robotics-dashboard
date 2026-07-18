@@ -482,3 +482,36 @@ $("teamList").addEventListener("click",e=>{
 });
 render();loadTeamEvents().then(()=>refresh());startRefreshTimer();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+
+// Detect when a newer build has been deployed and reload the whole app.
+const APP_VERSION=document.querySelector('meta[name="app-version"]')?.content||"";
+const VERSION_CHECK_MS=5*60*1000;
+let reloading=false;
+async function checkForUpdate(){
+ // Skip when unstamped (local/dev) or when the tab is hidden.
+ if(reloading||!APP_VERSION||APP_VERSION==="__APP_VERSION__"||document.hidden)return;
+ try{
+  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store"});
+  if(!r.ok)return;
+  const latest=(await r.json()).version;
+  if(latest&&latest!==APP_VERSION){
+   reloading=true;
+   showUpdateBanner();
+   await new Promise(res=>setTimeout(res,2500));
+   try{if("serviceWorker"in navigator){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(x=>x.unregister()))}}catch{}
+   try{if(window.caches){const keys=await caches.keys();await Promise.all(keys.map(k=>caches.delete(k)))}}catch{}
+   location.reload();
+  }
+ }catch{}
+}
+function showUpdateBanner(){
+ if(document.getElementById("updateBanner"))return;
+ const b=document.createElement("div");
+ b.id="updateBanner";
+ b.className="update-banner";
+ b.textContent="A new version is available — refreshing…";
+ document.body.appendChild(b);
+}
+setInterval(checkForUpdate,VERSION_CHECK_MS);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkForUpdate()});
+checkForUpdate();
