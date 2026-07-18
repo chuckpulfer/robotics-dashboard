@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1"};
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -21,6 +21,7 @@ let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
 let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=team;
+let teamLocations=load(K.teamLoc,{});
 let allMatches=load(K.allMatches,{});
 let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
@@ -242,6 +243,35 @@ function teamTableRow(t){
  const s=epa[t]||{}, r=rankings[t]||{};
  return `<div class="team-item ${t===team?"my-team":""}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
 }
+async function fetchTeamLocation(t){
+ if(teamLocations[t]||!hasApiKey())return teamLocations[t]||null;
+ try{
+  const data=await api(`https://www.thebluealliance.com/api/v3/team/frc${t}/simple`,`loc:${t}`);
+  if(data){teamLocations[t]={city:data.city,state:data.state_prov,country:data.country};save(K.teamLoc,teamLocations)}
+ }catch{}
+ return teamLocations[t]||null;
+}
+function teamLocationText(t){
+ const loc=teamLocations[t];
+ if(!loc)return hasApiKey()?"Loading location…":"Add a TBA API key to load location.";
+ return [loc.city,loc.state,loc.country&&loc.country!=="USA"?loc.country:null].filter(Boolean).join(", ")||"—";
+}
+function teamDetailHtml(t){
+ const name=teamDirectory()[t]||"Team "+t, r=rankings[t]||{}, s=epa[t]||{};
+ return `<h3>${t} · ${name}${t===team?" ⭐":""}</h3>
+ <div class="teamstats">
+  <div class="tiny"><b>${rank(r.rank)}</b><span>Event rank</span></div>
+  <div class="tiny"><b>${r.record||"—"}</b><span>Qual record</span></div>
+  <div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div>
+  <div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div>
+ </div>
+ <div class="tdloc">${teamLocationText(t)}</div>`;
+}
+function openTeamDetail(t){
+ $("teamDetailBody").innerHTML=teamDetailHtml(t);
+ $("teamDetail").showModal();
+ fetchTeamLocation(t).then(()=>{if($("teamDetail").open)$("teamDetailBody").innerHTML=teamDetailHtml(t)});
+}
 function alliance(color,list,won=false){
  const win=won?" · WIN":"";
  return `<div class="alliance ${color}${won?" won":""}"><div class="ahead">${color==="red"?"🔴 RED":"🔵 BLUE"}${win} <span style="float:right" class="rankhead">${rankLabel}&nbsp;&nbsp;EVENT</span></div>${list.map(teamRow).join("")}</div>`;
@@ -410,7 +440,7 @@ function allianceTeamNums(num){
  return a?(a.picks||[]).map(tn):[];
 }
 function teamListHtml(list){
- return list.map(t=>t===team?`<b>${t}</b>`:t).join(" · ")||"—";
+ return list.map(t=>`<span class="tnum-tap${t===team?" mine":""}" data-team="${t}">${t}</span>`).join(" · ")||"—";
 }
 function bracketRow(side,g,st){
  const num=matchAllianceNum(g,side,st.map), won=matchWinner(g)===side;
@@ -517,7 +547,7 @@ function allianceCard(a,idx){
  const badge=stat==="won"?'<span class="abadge won">🏆 Winners</span>':stat==="eliminated"?'<span class="abadge out">Eliminated</span>':stat==="playing"?'<span class="abadge live">Playing</span>':"";
  const rec=s.record?`Playoff record ${s.record.wins??0}-${s.record.losses??0}${s.record.ties?"-"+s.record.ties:""}`:"";
  const roles=["Captain","Pick 1","Pick 2","Pick 3"];
- const row=(t,role)=>`<div class="ateam ${t===team?"mine":""}"><span class="arole">${role}</span><span class="tnum">${t}</span><span class="tname">${dir[t]||"Team "+t}</span></div>`;
+ const row=(t,role)=>`<div class="ateam ${t===team?"mine":""}"><span class="arole">${role}</span><span class="tnum tnum-tap" data-team="${t}">${t}</span><span class="tname">${dir[t]||"Team "+t}</span></div>`;
  const rows=(a.picks||[]).map((k,i)=>row(tn(k),roles[i]||"Pick "+i)).join("")+(a.backup?.in?row(tn(a.backup.in),"Backup"):"");
  const mine=(a.picks||[]).some(k=>tn(k)===team)||tn(a.backup?.in)===team;
  return `<div class="acard${stat==="eliminated"?" out":""}${mine?" minecard":""}"><div class="ahdr"><span class="aseed">Alliance ${num}</span>${badge}</div>${rows}${rec?`<div class="arec">${rec}</div>`:""}</div>`;
@@ -664,7 +694,11 @@ $("allMatchList").addEventListener("click",e=>{
 });
 $("playoffContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
+ const tb=e.target.closest("[data-team]");
+ if(tb)openTeamDetail(+tb.dataset.team);
 });
+$("teamDetailClose").addEventListener("click",()=>$("teamDetail").close());
+$("teamDetail").addEventListener("click",e=>{if(e.target===$("teamDetail"))$("teamDetail").close()});
 $("powerHelpBtn").addEventListener("click",openPowerHelp);
 $("refreshBtn").addEventListener("click",()=>refresh(true));
 $("eventSelect").addEventListener("change",()=>{

@@ -121,3 +121,10 @@ label.combo{position:relative}
 .feedhint{font-size:11px;color:var(--muted)}
 .pscore{font-weight:800;font-variant-numeric:tabular-nums;min-width:26px;text-align:right}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
+.tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+.tnum-tap.mine{color:var(--gold);font-weight:800}
+dialog#teamDetail{border:0;border-radius:16px;padding:14px;background:var(--panel);color:var(--text);width:min(92vw,380px)}
+dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
+dialog#teamDetail h3{margin:0 0 10px;font-size:17px}
+.tdloc{margin-top:10px;font-size:13px;color:var(--muted)}
+#teamDetailClose{margin-top:12px;width:100%}
