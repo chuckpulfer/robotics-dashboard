@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1"};
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -22,6 +22,7 @@ if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team==
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
 let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=team;
 let allMatches=load(K.allMatches,{});
+let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
 setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
@@ -255,7 +256,7 @@ function matchWinner(m){
 }
 function fmtUnixTime(ts){return ts?new Date(ts*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):null}
 function matchPlayTime(m){return fmtUnixTime(m?.actual_time||m?.post_result_time)}
-function fmtMatchTime(m){return fmtUnixTime(m?.predicted_time)}
+function fmtMatchTime(m){return fmtUnixTime(m?.predicted_time||m?.time)}
 function matchScoreboard(m){
  const w=matchWinner(m);
  return `<div class="scoreboard"><div class="scorebox red${w==="red"?" won":""}"><span class="scorelabel">Red</span><b>${m.redScore}</b></div><div class="scorebox blue${w==="blue"?" won":""}"><span class="scorelabel">Blue</span><b>${m.blueScore}</b></div></div>`;
@@ -273,7 +274,7 @@ function matchCardMeta(m){
  return {text:t?`Est. ${t}`:"Time TBD",cls:"pending"};
 }
 function latestMatchTarget(){
- const sorted=[...matches].sort((a,b)=>a.q-b.q);
+ const sorted=myMatchList();
  const played=sorted.filter(matchDone);
  if(played.length)return played[played.length-1];
  return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
@@ -283,35 +284,60 @@ function scrollToLatestMatch(){
  requestAnimationFrame(()=>document.getElementById("match-"+m.key)?.scrollIntoView({behavior:"smooth",block:"center"}));
 }
 function nextMatch(){
- const sorted=[...matches].sort((a,b)=>a.q-b.q); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
+ const sorted=myMatchList(); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
 }
 function probability(m){
  const re=m.red.reduce((a,t)=>a+(+epa[t]?.total||0),0), be=m.blue.reduce((a,t)=>a+(+epa[t]?.total||0),0);
  if(!re&&!be)return null; const p=1/(1+Math.exp(-(re-be)/12)); return {red:Math.round(p*100),blue:Math.round((1-p)*100),re,be};
 }
+function myStatusHtml(){
+ const r=rankings[team], al=eventAlliances(), myA=myAllianceNum(), a=myA?al[myA-1]:null;
+ const cells=[
+  `<div class="metric"><b>${rank(r?.rank)}</b><span>Event rank</span></div>`,
+  `<div class="metric"><b>${r?.record||"—"}</b><span>Qual record</span></div>`
+ ];
+ if(a){
+  const pickIdx=(a.picks||[]).findIndex(k=>tn(k)===team);
+  const role=pickIdx===0?"Captain":pickIdx>0?`Pick ${pickIdx}`:"Backup";
+  cells.push(`<div class="metric"><b>A${myA}</b><span>${role}</span></div>`);
+  const s=a.status||{}, rec=s.record?`${s.record.wins??0}-${s.record.losses??0}${s.record.ties?"-"+s.record.ties:""}`:"—";
+  const won=s.status==="won"||(finalsSeriesWins(bracketState())[myA]||0)>=2;
+  const stat=won?["🏆 Won","good"]:s.status==="eliminated"?["Out","bad"]:["In","good"];
+  cells.push(`<div class="metric ${stat[1]}"><b>${stat[0]}</b><span>Playoffs · ${rec}</span></div>`);
+ }else if(al.length){
+  cells.push(`<div class="metric bad"><b>—</b><span>Not selected for playoffs</span></div>`);
+ }
+ return `<div class="hero mystatus"><div class="metrics m${cells.length}">${cells.join("")}</div></div>`;
+}
 function renderNext(){
  const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
- const m=nextMatch(); if(!m){$("nextContent").innerHTML=keyReminder+'<div class="empty">No matches loaded.</div>';return}
+ const top=keyReminder+myStatusHtml();
+ const list=myMatchList();
+ const m=list.find(x=>!matchDone(x))||list[list.length-1];
+ if(!m){$("nextContent").innerHTML=top+'<div class="empty">No matches loaded.</div>';return}
+ const after=`<h2 class="section-title">After this</h2>${list.filter(x=>matchOrd(x)>matchOrd(m)).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
+ if(m.pending){$("nextContent").innerHTML=top+pendingCard(m,true)+after;return}
  const p=probability(m), mine=m.red.includes(team)?"RED":"BLUE";
  const played=matchPlayTime(m), est=fmtMatchTime(m);
  const whenLabel=matchHasScore(m)?(played?`Final · ${played}`:"Final"):matchDone(m)?(played?`Played · ${played}`:"Pending"):est?`Est. ${est}`:"Time not posted";
- $("nextContent").innerHTML=`${keyReminder}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">Qualification ${m.q}</div>
+ $("nextContent").innerHTML=`${top}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">${matchLabel(m)}</div>
  <div class="countdown">${whenLabel}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div><button type="button" class="helpbtn power-help-inline" data-open-power-help aria-label="Explain ${powerLabel}">?</button>`:""}
  ${matchHasScore(m)?matchScoreboard(m):""}
  ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>
- <h2 class="section-title">After this</h2>${[...matches].filter(x=>x.q>m.q).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
+ ${after}`;
 }
 function matchCard(m){
+ if(m.pending)return pendingCard(m);
  const meta=matchCardMeta(m), w=matchWinner(m);
- return `<div class="hero" id="match-${m.key}"><div class="eyebrow">Qualification ${m.q}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
+ return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${matchLabel(m)}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
 }
-function renderMatches(){$("matchList").innerHTML=[...matches].sort((a,b)=>a.q-b.q).map(matchCard).join("")}
+function renderMatches(){$("matchList").innerHTML=myMatchList().map(matchCard).join("")}
 function closestMatchToNow(allMatches){
  const now=Date.now()/1000;
  return allMatches.sort((a,b)=>{
-  const aDist=Math.abs((a.predicted_time||a.actual_time||a.post_result_time||0)-now);
-  const bDist=Math.abs((b.predicted_time||b.actual_time||b.post_result_time||0)-now);
+  const aDist=Math.abs((a.predicted_time||a.time||a.actual_time||a.post_result_time||0)-now);
+  const bDist=Math.abs((b.predicted_time||b.time||b.actual_time||b.post_result_time||0)-now);
   return aDist-bDist;
  })[0];
 }
@@ -333,7 +359,192 @@ function renderTeams(){
  <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button><div class="stat-label">Next</div>
  </div>${list.map(teamTableRow).join("")}`;
 }
-function render(){renderHeader();renderNext();renderMatches();renderAllMatches();renderTeams()}
+// FRC double-elimination bracket (2023+): sf sets 1-13, then best-of-3 finals.
+// Feeds: A=alliance seed, W=winner of match n, L=loser of match n.
+const BRACKET={
+ 1:{r:1,b:"upper",feeds:["A1","A8"]},
+ 2:{r:1,b:"upper",feeds:["A4","A5"]},
+ 3:{r:1,b:"upper",feeds:["A2","A7"]},
+ 4:{r:1,b:"upper",feeds:["A3","A6"]},
+ 5:{r:2,b:"lower",feeds:["L1","L2"]},
+ 6:{r:2,b:"lower",feeds:["L3","L4"]},
+ 7:{r:2,b:"upper",feeds:["W1","W2"]},
+ 8:{r:2,b:"upper",feeds:["W3","W4"]},
+ 9:{r:3,b:"lower",feeds:["L7","W6"]},
+ 10:{r:3,b:"lower",feeds:["L8","W5"]},
+ 11:{r:4,b:"upper",feeds:["W7","W8"]},
+ 12:{r:4,b:"lower",feeds:["W9","W10"]},
+ 13:{r:5,b:"lower",feeds:["L11","W12"]}
+};
+const BRACKET_ROUNDS=[[1,[1,2,3,4]],[2,[5,6,7,8]],[3,[9,10]],[4,[11,12]],[5,[13]]];
+function eventAlliances(){return allianceData[config.eventKey]||[]}
+function eventPlayoffs(){return playoffMatches[config.eventKey]||[]}
+function allianceNumByTeam(){
+ const m={};
+ eventAlliances().forEach((a,i)=>{
+  (a.picks||[]).forEach(k=>m[tn(k)]=i+1);
+  if(a.backup?.in)m[tn(a.backup.in)]=i+1;
+ });
+ return m;
+}
+function matchAllianceNum(m,side,map){for(const t of m[side]||[]){if(map[t])return map[t]}return null}
+function setGames(s){return eventPlayoffs().filter(m=>m.comp==="sf"&&m.set===s).sort((a,b)=>a.q-b.q)}
+function finalsGames(){return eventPlayoffs().filter(m=>m.comp==="f").sort((a,b)=>a.q-b.q)}
+function bracketState(){
+ const map=allianceNumByTeam(), win={}, lose={};
+ for(let s=1;s<=13;s++){
+  for(const g of setGames(s)){
+   const w=matchWinner(g);
+   if(w&&w!=="tie"){win[s]=matchAllianceNum(g,w,map);lose[s]=matchAllianceNum(g,w==="red"?"blue":"red",map)}
+  }
+ }
+ return {map,win,lose};
+}
+function resolveFeed(feed,st){
+ const kind=feed[0], n=+feed.slice(1);
+ if(kind==="A")return {num:n,label:`Seed ${n}`};
+ return {num:(kind==="W"?st.win:st.lose)[n]||null,label:`${kind==="W"?"Winner":"Loser"} of M${n}`};
+}
+function allianceTeamNums(num){
+ const a=eventAlliances()[num-1];
+ return a?(a.picks||[]).map(tn):[];
+}
+function teamListHtml(list){
+ return list.map(t=>t===team?`<b>${t}</b>`:t).join(" · ")||"—";
+}
+function bracketRow(side,g,st){
+ const num=matchAllianceNum(g,side,st.map), won=matchWinner(g)===side;
+ const score=Number.isFinite(g[side+"Score"])?g[side+"Score"]:"—";
+ return `<div class="prow ${side}${won?" won":""}"><span class="apill">${num?"A"+num:"–"}</span><span class="pteams">${teamListHtml(g[side])}</span><span class="pscore">${score}</span></div>`;
+}
+function feedRow(feed,st){
+ const r=resolveFeed(feed,st);
+ const teamsTxt=r.num?teamListHtml(allianceTeamNums(r.num)):r.label;
+ const hint=r.num&&feed[0]!=="A"?` <span class="feedhint">(${r.label})</span>`:"";
+ return `<div class="prow tbd"><span class="apill">${r.num?"A"+r.num:"?"}</span><span class="pteams">${teamsTxt}${hint}</span><span class="pscore">—</span></div>`;
+}
+function matchLabel(m){
+ const comp=m.comp||"qm";
+ if(comp==="qm")return `Qualification ${m.q}`;
+ if(comp==="f")return `Final ${m.q}`;
+ if(comp==="sf"&&BRACKET[m.set])return `Playoff M${m.set} · ${BRACKET[m.set].b} bracket`;
+ const names={ef:"Octofinal",qf:"Quarterfinal",sf:"Semifinal"};
+ return `${names[comp]||comp} ${m.set} · Game ${m.q}`;
+}
+function matchOrd(m){
+ const comp=m.comp||"qm";
+ if(comp==="qm")return m.q;
+ if(comp==="f")return 100000+(m.q||0);
+ return ({ef:10000,qf:20000,sf:30000}[comp]||30000)+(m.set||0)*10+(m.q||0);
+}
+function myAllianceNum(){return allianceNumByTeam()[team]||null}
+// Bracket slots my alliance is already locked into but TBA has not posted a lineup for yet.
+function pendingSlots(){
+ const myA=myAllianceNum(); if(!myA)return [];
+ const st=bracketState();
+ const slot=(feeds,base,ref)=>{
+  const r=feeds.map(f=>resolveFeed(f,st));
+  if(!r.some(f=>f.num===myA))return null;
+  const opp=r.find(f=>f.num!==myA)||{};
+  return {...base,pending:true,red:allianceTeamNums(myA),blue:opp.num?allianceTeamNums(opp.num):[],
+   oppNum:opp.num||null,oppLabel:opp.label,redScore:null,blueScore:null,predicted_time:ref?.predicted_time};
+ };
+ for(let s=1;s<=13;s++){
+  const games=setGames(s), g=games[games.length-1];
+  if((g&&g.red?.length)||games.some(matchHasScore))continue;
+  const out=slot(BRACKET[s].feeds,{key:"pending_sf"+s,comp:"sf",set:s,q:1},g);
+  if(out)return [out];
+ }
+ if(!finalsGames().some(x=>x.red?.length)){
+  const out=slot(["W11","W13"],{key:"pending_f",comp:"f",set:1,q:1},finalsGames()[0]);
+  if(out)return [out];
+ }
+ return [];
+}
+function myMatchList(){
+ const quals=(matches||[]).map(m=>m.comp?m:{...m,comp:"qm"});
+ const po=eventPlayoffs().filter(m=>(m.red||[]).includes(team)||(m.blue||[]).includes(team));
+ return [...quals,...po,...pendingSlots()].sort((a,b)=>matchOrd(a)-matchOrd(b));
+}
+function pendingCard(m,hero=false){
+ const est=fmtMatchTime(m);
+ const when=est?`Est. ${est}`:m.oppNum?"Match time not posted yet":"Waiting on earlier results";
+ const oppTxt=m.blue.length?teamListHtml(m.blue)+(m.oppLabel?` <span class="feedhint">(${m.oppLabel})</span>`:""):(m.oppLabel||"TBD");
+ const rows=`<div class="prow tbd"><span class="apill">${myAllianceNum()?"A"+myAllianceNum():"?"}</span><span class="pteams">${teamListHtml(m.red)}</span><span class="pscore">—</span></div>
+ <div class="prow tbd"><span class="apill">${m.oppNum?"A"+m.oppNum:"?"}</span><span class="pteams">${oppTxt}</span><span class="pscore">—</span></div>`;
+ return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${hero?"Next match · playoffs":matchLabel(m)}</div>${hero?`<div class="hero-title">${matchLabel(m)}</div>`:""}<div class="countdown">${when}</div>${rows}</div>`;
+}
+function bracketMatchCard(s,st){
+ const info=BRACKET[s], games=setGames(s), g=games[games.length-1];
+ const meta=g?matchCardMeta(g):{text:"Not scheduled",cls:"pending"};
+ const rows=g&&g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):info.feeds.map(f=>feedRow(f,st)).join("");
+ return `<div class="pmatch"><div class="pmeta"><span class="mnum">M${s}</span><span class="btag ${info.b}">${info.b}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+}
+function finalsSeriesWins(st){
+ const wins={};
+ finalsGames().forEach(g=>{
+  const w=matchWinner(g);
+  if(w&&w!=="tie"){const n=matchAllianceNum(g,w,st.map);if(n)wins[n]=(wins[n]||0)+1}
+ });
+ return wins;
+}
+function finalsHtml(st){
+ const games=finalsGames(), wins=finalsSeriesWins(st);
+ const tally=Object.keys(wins).length?` · Series ${Object.entries(wins).map(([n,w])=>`A${n} ${w}`).join(" – ")}`:"";
+ let cards;
+ if(games.length){
+  cards=games.map(g=>{
+   const meta=matchCardMeta(g);
+   const rows=g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):["W11","W13"].map(f=>feedRow(f,st)).join("");
+   return `<div class="pmatch"><div class="pmeta"><span class="mnum">Final ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+  }).join("");
+ }else{
+  cards=`<div class="pmatch"><div class="pmeta"><span class="mnum">Finals</span><span class="ptime pending">Not scheduled</span></div>${["W11","W13"].map(f=>feedRow(f,st)).join("")}</div>`;
+ }
+ return `<div class="round-title">Finals · Best of 3${tally}</div><div class="pgrid">${cards}</div>`;
+}
+function legacyPlayoffHtml(st){
+ const names={ef:"Octofinal",qf:"Quarterfinal",sf:"Semifinal",f:"Final"}, order={ef:0,qf:1,sf:2,f:3};
+ const sorted=[...eventPlayoffs()].sort((a,b)=>(order[a.comp]??9)-(order[b.comp]??9)||a.set-b.set||a.q-b.q);
+ return `<h2 class="section-title">Playoff matches</h2><div class="pgrid">`+sorted.map(g=>{
+  const meta=matchCardMeta(g);
+  const rows=g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):"";
+  return `<div class="pmatch"><div class="pmeta"><span class="mnum">${names[g.comp]||g.comp} ${g.set} · Game ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+ }).join("")+`</div>`;
+}
+function allianceCard(a,idx){
+ const num=idx+1, dir=teamDirectory(), s=a.status||{}, stat=s.status;
+ const badge=stat==="won"?'<span class="abadge won">🏆 Winners</span>':stat==="eliminated"?'<span class="abadge out">Eliminated</span>':stat==="playing"?'<span class="abadge live">Playing</span>':"";
+ const rec=s.record?`Playoff record ${s.record.wins??0}-${s.record.losses??0}${s.record.ties?"-"+s.record.ties:""}`:"";
+ const roles=["Captain","Pick 1","Pick 2","Pick 3"];
+ const row=(t,role)=>`<div class="ateam ${t===team?"mine":""}"><span class="arole">${role}</span><span class="tnum">${t}</span><span class="tname">${dir[t]||"Team "+t}</span></div>`;
+ const rows=(a.picks||[]).map((k,i)=>row(tn(k),roles[i]||"Pick "+i)).join("")+(a.backup?.in?row(tn(a.backup.in),"Backup"):"");
+ const mine=(a.picks||[]).some(k=>tn(k)===team)||tn(a.backup?.in)===team;
+ return `<div class="acard${stat==="eliminated"?" out":""}${mine?" minecard":""}"><div class="ahdr"><span class="aseed">Alliance ${num}</span>${badge}</div>${rows}${rec?`<div class="arec">${rec}</div>`:""}</div>`;
+}
+function renderPlayoffs(){
+ const el=$("playoffContent"); if(!el)return;
+ const alliances=eventAlliances(), po=eventPlayoffs();
+ const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load alliances and playoff results.</div>':"";
+ if(!alliances.length&&!po.length){
+  el.innerHTML=keyReminder+'<div class="empty">Alliances and the playoff bracket will appear here once alliance selection is posted to The Blue Alliance.</div>';
+  return;
+ }
+ const st=bracketState(), wins=finalsSeriesWins(st);
+ let champ=alliances.findIndex(a=>a.status?.status==="won")+1;
+ if(!champ){const e=Object.entries(wins).find(([,w])=>w>=2);if(e)champ=+e[0]}
+ const champHtml=champ?`<div class="champ">🏆 Alliance ${champ} wins the event${allianceTeamNums(champ).length?`<span class="champteams">${allianceTeamNums(champ).join(" · ")}</span>`:""}</div>`:"";
+ const aHtml=alliances.length?`<h2 class="section-title">Alliances</h2><div class="agrid">${alliances.map((a,i)=>allianceCard(a,i)).join("")}</div>`:"";
+ let bHtml="";
+ if(po.some(m=>m.comp==="qf"||m.comp==="ef"))bHtml=legacyPlayoffHtml(st);
+ else if(po.length||alliances.length){
+  bHtml=`<h2 class="section-title">Bracket</h2>`+BRACKET_ROUNDS.map(([r,ms])=>
+   `<div class="round-title">Round ${r}</div><div class="pgrid">${ms.map(s=>bracketMatchCard(s,st)).join("")}</div>`
+  ).join("")+finalsHtml(st);
+ }
+ el.innerHTML=keyReminder+champHtml+aHtml+bHtml;
+}
+function render(){renderHeader();renderNext();renderMatches();renderAllMatches();renderTeams();renderPlayoffs()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(state){
@@ -362,22 +573,33 @@ async function fetchStatbotics(ids){
  }catch{}}));
  return good;
 }
+function mapTbaMatch(x){
+ return {
+  key:x.key,comp:x.comp_level,set:x.set_number,q:x.match_number,
+  red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
+  redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
+  time:x.time,predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
+ };
+}
 async function fetchAllEventMatches(){
- if(!hasApiKey())return [];
+ if(!hasApiKey())return allMatches[config.eventKey]||[];
  try{
   const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`am:${config.eventKey}`);
   if(data){
-   const all=data.filter(x=>x.comp_level==="qm").map(x=>({
-    key:x.key,q:x.match_number,red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
-    redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
-    predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
-   }));
-   allMatches[config.eventKey]=all;
+   allMatches[config.eventKey]=data.filter(x=>x.comp_level==="qm").map(mapTbaMatch);
+   playoffMatches[config.eventKey]=data.filter(x=>x.comp_level!=="qm").map(mapTbaMatch);
    save(K.allMatches,allMatches);
-   return all;
+   save(K.playoffs,playoffMatches);
   }
  }catch{}
  return allMatches[config.eventKey]||[];
+}
+async function fetchAlliances(){
+ if(!hasApiKey())return;
+ try{
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/alliances`,`al:${config.eventKey}`);
+  if(data){allianceData[config.eventKey]=data;save(K.alliances,allianceData)}
+ }catch{}
 }
 async function fetchTbaOprs(ids){
  if(!hasApiKey())return 0;
@@ -403,17 +625,15 @@ async function refreshPowerRatings(ids,notes){
  syncPowerLabels();
 }
 async function refresh(force=false){
- $("status").innerHTML='<span class="warn">Refreshing live data…</span>'; const notes=[];
+ $("statusTime").innerHTML='<span class="warn">Refreshing…</span>';
+ $("statusDetail").innerHTML='<span class="warn">Refreshing live data…</span>'; const notes=[];
  if(!hasApiKey())notes.push("TBA key not set");
  else{
  try{
   const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`m:${config.eventKey}`);
   if(data){
-   matches=data.filter(x=>x.comp_level==="qm"&&(x.alliances.red.team_keys.includes("frc"+team)||x.alliances.blue.team_keys.includes("frc"+team))).map(x=>({
-    key:x.key,q:x.match_number,red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
-    redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
-    predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
-   }));save(K.matches,matches);notes.push("matches updated")
+   matches=data.filter(x=>x.comp_level==="qm"&&(x.alliances.red.team_keys.includes("frc"+team)||x.alliances.blue.team_keys.includes("frc"+team))).map(mapTbaMatch);
+   save(K.matches,matches);notes.push("matches updated")
   }else notes.push("matches unchanged");
  }catch(e){notes.push(`matches ${e.message||"cached"}`)}
  try{
@@ -428,14 +648,21 @@ async function refresh(force=false){
  await refreshPowerRatings(allTeams(),notes);
  if(hasApiKey())await loadTeamEvents({autoPick:false});
  await fetchAllEventMatches();
- render();$("status").innerHTML=`<span class="ok">Updated ${new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</span> · ${notes.join(" · ")}`;
+ await fetchAlliances();
+ render();
+ const t=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+ $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
+ $("statusDetail").innerHTML=`<span class="ok">Updated ${t}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches()}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs()}));
 $("nextContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
  if(e.target.closest("[data-open-power-help]"))openPowerHelp();
 });
 $("allMatchList").addEventListener("click",e=>{
+ if(e.target.closest("[data-open-settings]"))openSettings();
+});
+$("playoffContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
 });
 $("powerHelpBtn").addEventListener("click",openPowerHelp);
@@ -444,6 +671,8 @@ $("eventSelect").addEventListener("change",()=>{
  setEventKey($("eventSelect").value,{manual:true});
  localStorage.removeItem(K.matches);matches=[];
  delete allMatches[config.eventKey];
+ delete playoffMatches[config.eventKey];
+ delete allianceData[config.eventKey];
  refresh(true);
 });
 $("teamPicker").addEventListener("input",renderTeamPickerList);

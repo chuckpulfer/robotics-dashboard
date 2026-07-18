@@ -1,4 +1,4 @@
-const CACHE="gg-iri-app-v3";
+const CACHE="gg-iri-app-v4";
 const SHELL=[
   "./",
   "./index.html",

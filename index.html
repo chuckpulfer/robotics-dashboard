@@ -6,25 +6,25 @@
   <meta name="theme-color" content="#111827">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="IRI Dashboard">
+  <meta name="apple-mobile-web-app-title" content="RoboGear Pass">
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=14">
-  <title>Golden Gears IRI Dashboard</title>
+  <link rel="stylesheet" href="./assets/css/styles.css?v=15">
+  <title>RoboGear Pass</title>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="top"><div><h1>Golden Gears IRI</h1><div class="sub" id="appSub">Team 10021 live dashboard</div></div>
-  <button class="iconbtn" id="refreshBtn" type="button">Refresh</button></div>
-  <div class="status" id="status">Loading cached data…</div>
+  <div class="top"><div><h1>RoboGear Pass</h1><div class="sub" id="appSub">Team 10021 live dashboard</div></div>
+  <div class="topright"><span class="updated" id="statusTime">Loading…</span><button class="iconbtn" id="refreshBtn" type="button">Refresh</button></div></div>
 </header>
 
 <main>
 <section class="page active" id="page-next"><div id="nextContent"></div></section>
 <section class="page" id="page-matches"><div id="matchList"></div></section>
 <section class="page" id="page-allmatches"><div id="allMatchList"></div></section>
+<section class="page" id="page-playoffs"><div id="playoffContent"></div></section>
 <section class="page" id="page-teams">
   <div class="teams-sticky">
     <div class="titlebar"><h2>Event teams</h2><button class="helpbtn" id="powerHelpBtn" type="button" aria-label="Explain OPR and power ratings">?</button></div>
@@ -36,6 +36,7 @@
 </section>
 <section class="page" id="page-settings">
   <h2 class="section-title">Settings</h2>
+  <div class="status" id="statusDetail">No refresh yet.</div>
   <details open><summary>Event and API</summary><div class="settings">
     <label class="combo">Your team<input id="teamPicker" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type a team number or name" enterkeyhint="search"><div class="combolist" id="teamPickerList" hidden></div></label>
     <div class="note">Search by team number or name and pick your team from the list. With a TBA API key, the full FRC team directory downloads once and stays cached until you update it.</div>
@@ -72,11 +73,12 @@
 
 <nav class="tabs" aria-label="Dashboard sections">
   <button class="tab active" data-page="next">Next</button>
-  <button class="tab" data-page="matches">My Matches</button>
-  <button class="tab" data-page="allmatches">All Matches</button>
+  <button class="tab" data-page="matches">Mine</button>
+  <button class="tab" data-page="allmatches">Quals</button>
+  <button class="tab" data-page="playoffs">Playoffs</button>
   <button class="tab" data-page="teams">Teams</button>
   <button class="tab" data-page="settings">Settings</button>
 </nav>
 
-<script src="./assets/js/app.js?v=22"></script>
+<script src="./assets/js/app.js?v=23"></script>
 </body></html>

@@ -1,4 +1,8 @@
-# Golden Gears IRI Dashboard
+# RoboGear Pass
+
+## Summary
+
+This app follows an FRC robotics competiion through qualififactions and playoffs. Spectators and teams use it to show important information about the matches and rankings.
 
 ## Publish with GitHub Pages
 
