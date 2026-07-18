@@ -60,7 +60,7 @@ h1{font-size:20px;margin:0} .sub,.muted{color:var(--muted)} .sub{font-size:13px;
 .header-btn{border:0;background:none;color:var(--muted);font-size:11px;font-weight:700;padding:0;cursor:pointer;text-align:left;text-transform:uppercase;letter-spacing:0.5px} .header-btn.active{color:var(--gold)} .header-btn:hover{color:var(--text)}
 .header-btn.stat-btn{text-align:center} .stat-label{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;text-align:center;align-self:center}
 .team-item{display:grid;grid-template-columns:46px minmax(0,1fr) 40px 40px 44px 52px 74px;gap:6px;padding:8px;align-items:center;border-bottom:1px solid var(--line);font-size:13px;background:var(--bg)}
-.team-item.my-team{background:var(--goldbg)} .team-num{font-weight:700;font-size:15px} .team-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .stat{text-align:center;font-size:12px;color:var(--muted)} .stat.next{font-size:11px;line-height:1.2}
+.team-item{cursor:pointer} .team-item.my-team{background:var(--goldbg)} .team-num{font-weight:700;font-size:15px} .team-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .stat{text-align:center;font-size:12px;color:var(--muted)} .stat.next{font-size:11px;line-height:1.2}
 .tabs{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(100%,720px);
   display:grid;grid-template-columns:repeat(6,1fr);background:color-mix(in srgb,var(--panel) 96%,transparent);
   border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));backdrop-filter:blur(14px);z-index:20}

@@ -241,7 +241,7 @@ function teamNextLabel(t){
 }
 function teamTableRow(t){
  const s=epa[t]||{}, r=rankings[t]||{};
- return `<div class="team-item ${t===team?"my-team":""}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
+ return `<div class="team-item ${t===team?"my-team":""}" data-team="${t}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
 }
 async function fetchTeamLocation(t){
  if(teamLocations[t]||!hasApiKey())return teamLocations[t]||null;
@@ -741,7 +741,9 @@ $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localSto
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
 $("teamList").addEventListener("click",e=>{
  const btn=e.target.closest("[data-sort]");
- if(btn){teamSort=btn.dataset.sort;renderTeams()}
+ if(btn){teamSort=btn.dataset.sort;renderTeams();return}
+ const row=e.target.closest("[data-team]");
+ if(row)openTeamDetail(+row.dataset.team);
 });
 render();loadTeamEvents().then(()=>refresh());startRefreshTimer();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
