@@ -14,6 +14,22 @@ This app follows an FRC robotics competiion through qualififactions and playoffs
 
 Do not upload only `index.html`. The manifest, service worker, and icons are needed for install/offline support.
 
+## Custom domain
+
+The site is served at **https://robogearpass.com**. The root `CNAME` file sets the
+custom domain; it ships with the deploy artifact, so pushing to `main` keeps it applied.
+
+DNS lives on Cloudflare. The apex `robogearpass.com` points at the GitHub Pages
+anycast addresses and `www` is a CNAME to `chuckpulfer.github.io`. Two Cloudflare
+settings matter:
+
+- The DNS records must be **DNS only** (grey cloud), not proxied. Proxying breaks
+  GitHub's certificate issuance and its own HTTPS redirect.
+- **SSL/TLS → Overview** must be **Full (strict)**. "Flexible" causes a redirect loop.
+
+In GitHub **Settings → Pages**, the custom domain field should read `robogearpass.com`
+with **Enforce HTTPS** enabled once the certificate is issued.
+
 ## Releasing an update
 
 Just push to `main`. The deploy workflow stamps the commit SHA as the build version into both `version.json` and the `<meta name="app-version">` tag in `index.html`, so versioning is fully automatic — nothing to bump by hand.
