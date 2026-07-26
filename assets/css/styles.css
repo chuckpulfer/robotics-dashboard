@@ -41,7 +41,7 @@ h1{font-size:20px;margin:0} .sub,.muted{color:var(--muted)} .sub{font-size:13px;
 .alliance{border-radius:12px;overflow:hidden;margin-top:6px} .alliance.red{background:var(--redbg)} .alliance.blue{background:var(--bluebg)}
 .ahead{font-size:12px;font-weight:800;padding:6px 8px 3px} .red .ahead{color:var(--red)} .blue .ahead{color:var(--blue)}
 .teamrow{display:grid;grid-template-columns:minmax(0,1fr) 46px 46px;gap:4px;padding:5px 8px;
-  border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent);align-items:center}
+  border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent);align-items:center;cursor:pointer}
 .alliance .ahead+.teamrow{border-top:none}
 .teamrow.mine{background:var(--goldbg);font-weight:600}
 .alliance .teamrow.mine{background:color-mix(in srgb,var(--goldbg) 80%,transparent);font-weight:700} .identity{min-width:0;display:flex;gap:7px;align-items:baseline}
