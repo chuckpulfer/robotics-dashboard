@@ -416,6 +416,12 @@ function matchScoreboard(m){
  const w=matchWinner(m);
  return `<div class="scoreboard"><div class="scorebox red${w==="red"?" won":""}"><span class="scorelabel">Red</span><b>${m.redScore}</b></div><div class="scorebox blue${w==="blue"?" won":""}"><span class="scorelabel">Blue</span><b>${m.blueScore}</b></div></div>`;
 }
+// TBA posts the match video once a match has been played, so this appears on finished
+// matches only. Opens in a new tab so the dashboard is not navigated away from mid-event.
+function matchVideoLink(m){
+ if(!m?.video)return "";
+ return `<a class="videolink" href="https://www.youtube.com/watch?v=${encodeURIComponent(m.video)}" target="_blank" rel="noopener" aria-label="Watch ${matchLabel(m)} on YouTube">▶ Video</a>`;
+}
 function matchCardMeta(m){
  if(matchHasScore(m)){
   const played=matchPlayTime(m), label=matchWinner(m)==="tie"?"Tie":"Final";
@@ -468,7 +474,7 @@ function nextMatchCard(m){
  const played=matchPlayTime(m), est=fmtMatchTime(m);
  const whenLabel=matchHasScore(m)?(played?`Final · ${played}`:"Final"):matchDone(m)?(played?`Played · ${played}`:"Pending"):est?`Est. ${est}`:"Time not posted";
  return `<div class="hero nexthero" id="match-${m.key}"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">${matchLabel(m)}</div>
- <div class="countdown">${whenLabel}</div>
+ <div class="countdown">${whenLabel}${matchVideoLink(m)}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div><button type="button" class="helpbtn power-help-inline" data-open-power-help aria-label="Explain ${powerLabel}">?</button>`:""}
  ${matchHasScore(m)?matchScoreboard(m):""}
  ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>`;
@@ -476,7 +482,7 @@ function nextMatchCard(m){
 function matchCard(m){
  if(m.pending)return pendingCard(m);
  const meta=matchCardMeta(m), w=matchWinner(m);
- return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${matchLabel(m)}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
+ return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${matchLabel(m)}</div><div class="score ${meta.cls}">${meta.text}${matchVideoLink(m)}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
 }
 function renderMatches(){
  const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
@@ -632,7 +638,7 @@ function bracketMatchCard(s,st){
  const info=BRACKET[s], games=setGames(s), g=games[games.length-1];
  const meta=g?matchCardMeta(g):{text:"Not scheduled",cls:"pending"};
  const rows=g&&g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):info.feeds.map(f=>feedRow(f,st)).join("");
- return `<div class="pmatch"><div class="pmeta"><span class="mnum">M${s}</span><span class="btag ${info.b}">${info.b}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+ return `<div class="pmatch"><div class="pmeta"><span class="mnum">M${s}</span><span class="btag ${info.b}">${info.b}</span><span class="ptime ${meta.cls}">${meta.text}</span>${matchVideoLink(g)}</div>${rows}</div>`;
 }
 function finalsSeriesWins(st){
  const wins={};
@@ -650,7 +656,7 @@ function finalsHtml(st){
   cards=games.map(g=>{
    const meta=matchCardMeta(g);
    const rows=g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):["W11","W13"].map(f=>feedRow(f,st)).join("");
-   return `<div class="pmatch"><div class="pmeta"><span class="mnum">Final ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+   return `<div class="pmatch"><div class="pmeta"><span class="mnum">Final ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span>${matchVideoLink(g)}</div>${rows}</div>`;
   }).join("");
  }else{
   cards=`<div class="pmatch"><div class="pmeta"><span class="mnum">Finals</span><span class="ptime pending">Not scheduled</span></div>${["W11","W13"].map(f=>feedRow(f,st)).join("")}</div>`;
@@ -663,7 +669,7 @@ function legacyPlayoffHtml(st){
  return `<h2 class="section-title">Playoff matches</h2><div class="pgrid">`+sorted.map(g=>{
   const meta=matchCardMeta(g);
   const rows=g.red?.length?bracketRow("red",g,st)+bracketRow("blue",g,st):"";
-  return `<div class="pmatch"><div class="pmeta"><span class="mnum">${names[g.comp]||g.comp} ${g.set} · Game ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span></div>${rows}</div>`;
+  return `<div class="pmatch"><div class="pmeta"><span class="mnum">${names[g.comp]||g.comp} ${g.set} · Game ${g.q}</span><span class="ptime ${meta.cls}">${meta.text}</span>${matchVideoLink(g)}</div>${rows}</div>`;
  }).join("")+`</div>`;
 }
 function allianceCard(a,idx){
@@ -735,13 +741,17 @@ function mapTbaMatch(x){
   key:x.key,comp:x.comp_level,set:x.set_number,q:x.match_number,
   red:x.alliances.red.team_keys.map(tn),blue:x.alliances.blue.team_keys.map(tn),
   redScore:x.alliances.red.score>=0?x.alliances.red.score:null,blueScore:x.alliances.blue.score>=0?x.alliances.blue.score:null,
-  time:x.time,predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time
+  time:x.time,predicted_time:x.predicted_time,actual_time:x.actual_time,post_result_time:x.post_result_time,
+  // Only the YouTube key is kept. TBA also lists self-hosted "tba" videos, which have
+  // no stable public player, and the rest of the full match record (score_breakdown)
+  // is far larger than anything the app shows.
+  video:(x.videos||[]).find(v=>v.type==="youtube"&&v.key)?.key||null
  };
 }
 async function fetchAllEventMatches(){
  if(!hasApiKey())return allMatches[config.eventKey]||[];
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`am:${config.eventKey}`);
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches`,`am2:${config.eventKey}`);
   if(data){
    allMatches[config.eventKey]=data.filter(x=>x.comp_level==="qm").map(mapTbaMatch);
    playoffMatches[config.eventKey]=data.filter(x=>x.comp_level!=="qm").map(mapTbaMatch);
@@ -787,7 +797,7 @@ async function refresh(force=false){
  if(!hasApiKey())notes.push("TBA key not set");
  else{
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches/simple`,`m:${config.eventKey}`);
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches`,`m2:${config.eventKey}`);
   if(data){
    matches=data.filter(x=>x.comp_level==="qm"&&(x.alliances.red.team_keys.includes("frc"+team)||x.alliances.blue.team_keys.includes("frc"+team))).map(mapTbaMatch);
    save(K.matches,matches);notes.push("matches updated")

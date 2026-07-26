@@ -93,7 +93,9 @@ export async function mockTba(page, data = {}, { hang = false, useEtags = false 
     const info = url.match(/team\/frc(\d+)\/simple/);
     if (info) return json(route, teamSimple[info[1]] ?? {});
 
-    if (url.includes("/matches/simple")) return json(route, matches);
+    // Matches both /matches and the older /matches/simple, so the mock keeps working
+    // whichever the app asks for — videos only come back from the full record.
+    if (/\/event\/[^/]+\/matches(\/simple)?(\?|$)/.test(url)) return json(route, matches);
     if (url.includes("/rankings")) return json(route, { rankings });
     if (url.includes("/alliances")) return json(route, alliances);
     if (url.includes("/oprs")) return oprs ? json(route, { oprs }) : json(route, {});
@@ -174,7 +176,7 @@ export const readConfig = (page) =>
  * alone is misleading here: refresh() overwrites rankings and matches from the
  * network, so a seeded-only fixture gets wiped moments after load.
  */
-export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore = -1, blueScore = -1, played = false }) {
+export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore = -1, blueScore = -1, played = false, video = null, videos = null }) {
   return {
     key: key ?? `${comp}${num}`,
     comp_level: comp,
@@ -184,6 +186,8 @@ export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore =
       red: { team_keys: red.map((t) => `frc${t}`), score: redScore },
       blue: { team_keys: blue.map((t) => `frc${t}`), score: blueScore },
     },
+    // Only present on the full match record, never on /matches/simple.
+    videos: videos ?? (video ? [{ type: "youtube", key: video }] : []),
     time: 1_900_000_000,
     predicted_time: 1_900_000_000,
     actual_time: played ? 1_700_000_000 : null,
