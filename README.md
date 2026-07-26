@@ -38,6 +38,46 @@ Already-open pages fetch `version.json` on load, when the tab regains focus, and
 
 Both files ship with a `__APP_VERSION__` placeholder that only the workflow replaces; opening the files directly during local development leaves it unstamped, and the update check is skipped in that case.
 
+## Tests
+
+End-to-end tests drive the real app in a headless mobile-sized Chromium. They run on
+every push and pull request via `.github/workflows/test.yml`.
+
+```bash
+npm install
+npx playwright install chromium   # first time only
+npm test          # everything, ~50s
+npm run test:fast # skips the @slow specs, ~20s
+npm run test:ui   # interactive runner
+```
+
+The app itself still has no dependencies and no build step — `package.json` exists
+only for the tests, and nothing it installs ships to the browser.
+
+| Spec | Covers |
+| --- | --- |
+| `team-popup` | tapping a team from match cards, the bracket and the Teams tab |
+| `match-timeline` | the combined Mine tab: status header, next-match card, ordering |
+| `layout` | the sticky header clearing the iOS status bar; Teams tab stacking |
+| `settings` | the two settings sections saving without clobbering each other |
+| `cache` | cache-first service worker, offline load, and the version panel |
+| `team-switch` | the ETag regression that emptied the event dropdown |
+| `timeouts` | saves and refreshes recovering from a hung network (`@slow`) |
+
+Three things about the harness are worth knowing before adding specs, because each one
+silently passes a broken test rather than failing it:
+
+- **Route TBA as `https://www.thebluealliance.com/**`.** A glob like
+  `**/thebluealliance.com/**` never matches — the host is `www.` prefixed and the
+  pattern demands a literal `/` before it — so requests escape to the real network.
+- **Expose `ETag` via `Access-Control-Expose-Headers`.** It is not a CORS-safelisted
+  header, so without that the app cannot read it, no ETag is stored, and every
+  conditional-request path goes untested. That is what hid the team-switch bug.
+- **Block the service worker for network specs, allow it for cache specs.** A
+  controlling worker lets cross-origin requests bypass page routing. To prove
+  something was served from cache, check the server's own `hits` — page-level request
+  events fire even when the worker answered without touching the network.
+
 ## Install on iPhone
 
 Open the published site in Safari, tap **Share**, then **Add to Home Screen**.

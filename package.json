@@ -1,0 +1,16 @@
+{
+  "name": "robogear-pass",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test suite for the RoboGear Pass dashboard. The app itself has no dependencies and no build step.",
+  "scripts": {
+    "test": "playwright test",
+    "test:fast": "playwright test --grep-invert @slow",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
