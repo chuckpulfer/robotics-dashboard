@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { mockTba, openApp, openSettings, KEYS, DEFAULT_CONFIG } from "./helpers/app.js";
+import { mockTba, openApp, openSettings, readConfig, KEYS, DEFAULT_CONFIG } from "./helpers/app.js";
 
 /**
  * Regression cover for the empty event dropdown after switching teams.
@@ -81,6 +81,77 @@ test("an install left with stale ETags and no cached events repairs itself", asy
   await page.waitForTimeout(1200);
 
   expect((await eventOptions(page)).options).toEqual(["2026iri"]);
+});
+
+test.describe("the dropdown never shows another team's events", () => {
+  test("typing a different team clears the event list", async ({ page }) => {
+    await mockTba(page, { teamEvents: EVENTS }, { useEtags: true });
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventManual: false } });
+    await openSettings(page);
+    await expect.poll(async () => (await eventOptions(page)).options).toEqual(["2026iri"]);
+
+    await page.fill("#teamPicker", "2056");
+
+    // 10021's event must not still be sitting there, selectable, under team 2056.
+    const { options, value } = await eventOptions(page);
+    expect(options).toEqual([]);
+    expect(value).toBe("");
+    await expect(page.locator("#eventSelect")).toContainText("Save to load events for team 2056");
+  });
+
+  test("picking a team from the suggestions clears it too", async ({ page }) => {
+    await mockTba(page, { teamEvents: EVENTS }, { useEtags: true });
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventManual: false } });
+    await openSettings(page);
+
+    await page.click("#teamPicker");
+    await page.fill("#teamPicker", "2056");
+    const suggestion = page.locator('#teamPickerList [data-team="2056"]');
+    await expect(suggestion).toBeVisible();
+    await suggestion.dispatchEvent("pointerdown");
+
+    expect((await eventOptions(page)).options).toEqual([]);
+  });
+
+  test("typing back to the saved team restores its events", async ({ page }) => {
+    await mockTba(page, { teamEvents: EVENTS }, { useEtags: true });
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventManual: false } });
+    await openSettings(page);
+    await expect.poll(async () => (await eventOptions(page)).options).toEqual(["2026iri"]);
+
+    await page.fill("#teamPicker", "2056");
+    expect((await eventOptions(page)).options).toEqual([]);
+
+    await page.fill("#teamPicker", "10021");
+    expect((await eventOptions(page)).options).toEqual(["2026iri"]);
+  });
+
+  test("saving does not keep the previous team's event key", async ({ page }) => {
+    await mockTba(page, { teamEvents: EVENTS }, { useEtags: true });
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventManual: false } });
+    await openSettings(page);
+    await expect.poll(async () => (await readConfig(page)).eventKey).toBe("2026iri");
+
+    await switchTeam(page, 2056);
+
+    // 2026iri belongs to 10021; the saved key has to come from 2056's own events.
+    const { eventKey } = await readConfig(page);
+    expect(["2026onta", "2026cmptx"]).toContain(eventKey);
+  });
+
+  test("switching to a team with no events does not keep the old event", async ({ page }) => {
+    // Auto-pick cannot rescue this one: there is nothing to pick. Carrying the key over
+    // would show the previous team's event data under the new team.
+    await mockTba(page, { teamEvents: EVENTS }, { useEtags: true });
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventManual: false } });
+    await openSettings(page);
+    await expect.poll(async () => (await readConfig(page)).eventKey).toBe("2026iri");
+
+    await switchTeam(page, 9999); // absent from EVENTS, so the API returns none
+
+    expect((await readConfig(page)).eventKey).not.toBe("2026iri");
+    expect((await eventOptions(page)).options).toEqual([]);
+  });
 });
 
 test("ETags for discarded data do not survive a team switch", async ({ page }) => {
