@@ -204,10 +204,20 @@ function openSettings(){
  $("page-settings").classList.add("active");
 }
 
+// The header height varies with the wrapped subtitle and the status bar inset, so the
+// sticky offsets below it are measured rather than hardcoded.
+function syncStickyOffsets(){
+ const set=(k,el)=>{if(el?.offsetHeight)document.documentElement.style.setProperty(k,el.offsetHeight+"px")};
+ set("--header-h",document.querySelector("header"));
+ set("--teams-sticky-h",document.querySelector(".teams-sticky"));
+}
 function renderHeader(){
  $("appSub").textContent=`Team ${team}${teams[team]?" · "+teams[team]:""} live dashboard`;
+ requestAnimationFrame(syncStickyOffsets);
 }
 renderHeader();
+addEventListener("resize",syncStickyOffsets);
+addEventListener("orientationchange",()=>requestAnimationFrame(syncStickyOffsets));
 
 function syncPowerLabels(){
  const s=Object.values(epa).find(x=>x?.source);
@@ -712,7 +722,7 @@ async function refresh(force=false){
  $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
  $("statusDetail").innerHTML=`<span class="ok">Updated ${t}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails()}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();requestAnimationFrame(syncStickyOffsets)}));
 $("cachePanel").addEventListener("toggle",()=>{if($("cachePanel").open)renderCacheDetails()});
 $("nextContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
