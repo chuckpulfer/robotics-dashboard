@@ -170,6 +170,34 @@ async function loadTeamEvents({autoPick=!config.eventManual}={}){
  }else if(savedValid)$("eventSelect").value=config.eventKey;
  updateEventKeyNote();
 }
+function fmtBytes(n){
+ if(!Number.isFinite(n))return "—";
+ if(n<1024)return `${n} B`;
+ if(n<1048576)return `${(n/1024).toFixed(1)} KB`;
+ return `${(n/1048576).toFixed(1)} MB`;
+}
+async function cacheReport(){
+ if(!window.caches)return null;
+ const names=await caches.keys(), entries=[];
+ for(const name of names){
+  const keys=await (await caches.open(name)).keys();
+  entries.push({name,paths:keys.map(r=>new URL(r.url).pathname)});
+ }
+ let usage=null;
+ try{usage=(await navigator.storage?.estimate?.())?.usage??null}catch{}
+ return {entries,usage};
+}
+async function renderCacheDetails(){
+ const el=$("cacheDetails"); if(!el)return;
+ const rep=await cacheReport();
+ if(!rep){el.textContent="This browser does not support the cache storage API.";return}
+ const paths=rep.entries.flatMap(c=>c.paths).sort();
+ if(!paths.length){el.textContent="No files cached yet.";return}
+ const used=rep.usage!=null?` · about ${fmtBytes(rep.usage)} stored`:"";
+ el.innerHTML=`<div><strong>${paths.length}</strong> file${paths.length===1?"":"s"} cached${used}</div>
+ <div>Cache: ${rep.entries.map(c=>c.name).join(", ")}</div>
+ <ul class="cachelist">${paths.map(p=>`<li>${p}</li>`).join("")}</ul>`;
+}
 function openSettings(){
  document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));
  document.querySelector('.tab[data-page="settings"]').classList.add("active");
@@ -684,7 +712,8 @@ async function refresh(force=false){
  $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
  $("statusDetail").innerHTML=`<span class="ok">Updated ${t}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs()}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails()}));
+$("cachePanel").addEventListener("toggle",()=>{if($("cachePanel").open)renderCacheDetails()});
 $("nextContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
  if(e.target.closest("[data-open-power-help]"))openPowerHelp();
@@ -737,6 +766,13 @@ $("saveBtn").addEventListener("click",async()=>{
   setSaveButtonState("saved");
  }catch{setSaveButtonState("idle")}
 });
+$("clearCacheBtn").addEventListener("click",async()=>{
+ const b=$("clearCacheBtn");
+ b.disabled=true;b.textContent="Clearing…";
+ try{if(window.caches){const keys=await caches.keys();await Promise.all(keys.map(k=>caches.delete(k)))}}catch{}
+ try{if("serviceWorker"in navigator){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()))}}catch{}
+ location.reload();
+});
 $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
 $("teamList").addEventListener("click",e=>{
@@ -745,7 +781,7 @@ $("teamList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
  if(row)openTeamDetail(+row.dataset.team);
 });
-render();loadTeamEvents().then(()=>refresh());startRefreshTimer();
+render();loadTeamEvents().then(()=>refresh());startRefreshTimer();renderCacheDetails();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.
