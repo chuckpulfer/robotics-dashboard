@@ -10,7 +10,7 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=20">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=21">
   <title>RoboGear Pass</title>
 </head>
 <body>
@@ -21,8 +21,7 @@
 </header>
 
 <main>
-<section class="page active" id="page-next"><div id="nextContent"></div></section>
-<section class="page" id="page-matches"><div id="matchList"></div></section>
+<section class="page active" id="page-matches"><div id="matchList"></div></section>
 <section class="page" id="page-allmatches"><div id="allMatchList"></div></section>
 <section class="page" id="page-playoffs"><div id="playoffContent"></div></section>
 <section class="page" id="page-teams">
@@ -69,15 +68,14 @@
     <p>TBA calculates OPR with least squares from completed qualification scores at an event. Each match is treated as an equation: the alliance score equals the sum of the OPRs for the three teams on that alliance. Solving the full set of equations yields one OPR per team at that event.</p>
     <p><strong>Where this app gets OPR:</strong> when Statbotics EPA is unavailable, we download precomputed OPRs from The Blue Alliance API (<code>/event/{event_key}/oprs</code>) for the selected event. The <strong>OPR #</strong> column ranks teams at that event by OPR.</p>
     <p><strong>EPA</strong> (Expected Points Added) comes from Statbotics when that service is online. It is a separate season-wide model and is usually shown with a world rank. The app prefers EPA first, then falls back to event OPR.</p>
-    <p><strong>Win estimates</strong> on the Next tab add up each alliance’s power rating (OPR or EPA) and convert the difference into a rough red/blue percentage. It is a quick scouting hint, not a guarantee.</p>
+    <p><strong>Win estimates</strong> on your next match add up each alliance’s power rating (OPR or EPA) and convert the difference into a rough red/blue percentage. It is a quick scouting hint, not a guarantee.</p>
   </div></details>
 </section>
 </main>
 </div>
 
 <nav class="tabs" aria-label="Dashboard sections">
-  <button class="tab active" data-page="next">Next</button>
-  <button class="tab" data-page="matches">Mine</button>
+  <button class="tab active" data-page="matches">Mine</button>
   <button class="tab" data-page="allmatches">Quals</button>
   <button class="tab" data-page="playoffs">Playoffs</button>
   <button class="tab" data-page="teams">Teams</button>
@@ -89,5 +87,5 @@
   <button class="iconbtn" id="teamDetailClose" type="button">Close</button>
 </dialog>
 
-<script src="./assets/js/app.js?v=28"></script>
+<script src="./assets/js/app.js?v=29"></script>
 </body></html>
