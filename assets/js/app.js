@@ -100,6 +100,16 @@ function pickerTeamValue(){
  const m=$("teamPicker").value.trim().match(/^\d+/);
  return m?+m[0]:selectedTeam;
 }
+// The event list belongs to the saved team. While the picker shows a different one,
+// keep the old team's events out of the dropdown — otherwise the two disagree and an
+// event the new team is not attending looks selectable.
+function syncEventSelectForPicker(){
+ const picked=pickerTeamValue();
+ if(picked===team){renderEventSelect();return}
+ $("eventSelect").innerHTML=`<option value="">Save to load events for team ${picked}</option>`;
+ $("eventSelect").value="";
+ $("eventKeyNote").textContent=`Save to load events for team ${picked}.`;
+}
 function renderTeamPickerList(){
  const list=$("teamPickerList"), items=teamPickerMatches($("teamPicker").value);
  if(!items.length){list.hidden=true;list.innerHTML="";return}
@@ -837,12 +847,12 @@ $("eventSelect").addEventListener("change",()=>{
  delete allianceData[config.eventKey];
  refresh(true);
 });
-$("teamPicker").addEventListener("input",renderTeamPickerList);
+$("teamPicker").addEventListener("input",()=>{renderTeamPickerList();syncEventSelectForPicker()});
 $("teamPicker").addEventListener("focus",()=>{loadAllTeams();renderTeamPickerList()});
 $("teamPicker").addEventListener("blur",()=>setTimeout(()=>{$("teamPickerList").hidden=true},150));
 $("teamPickerList").addEventListener("pointerdown",e=>{
  const b=e.target.closest("[data-team]");
- if(b){e.preventDefault();setPickerTeam(+b.dataset.team)}
+ if(b){e.preventDefault();setPickerTeam(+b.dataset.team);syncEventSelectForPicker()}
 });
 $("refreshTeamsBtn").addEventListener("click",async()=>{
  const b=$("refreshTeamsBtn");
@@ -858,7 +868,10 @@ $("saveTeamBtn").addEventListener("click",async()=>{
  setSaveButtonState(btn,"busy");
  // Settings persist before any network work, so a dead connection never loses them.
  const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
- config={...config,team:nextTeam,eventKey:($("eventSelect").value||$("eventKey").value).trim()};
+ // On a team change the old event key belongs to the previous team, so drop it rather
+ // than carry it over; loadTeamEvents picks one from the new team's events below.
+ const nextEventKey=teamChanged?"":($("eventSelect").value||$("eventKey").value).trim();
+ config={...config,team:nextTeam,eventKey:nextEventKey};
  save(K.config,config);team=nextTeam;
  if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[];forgetAllEtags()}
  setPickerTeam(team);
