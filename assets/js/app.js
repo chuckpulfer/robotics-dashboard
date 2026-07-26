@@ -266,7 +266,7 @@ function sortedTeams(){
 }
 function teamRow(t){
  const s=epa[t]||{}, r=rankings[t];
- return `<div class="teamrow ${t===team?"mine":""}"><div class="identity"><span class="tnum">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
+ return `<div class="teamrow ${t===team?"mine":""}" data-team="${t}"><div class="identity"><span class="tnum tnum-tap">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
 }
 function teamNextMatch(t){
  const list=allMatches[config.eventKey]||[];
@@ -724,11 +724,15 @@ async function refresh(force=false){
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToNextMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();requestAnimationFrame(syncStickyOffsets)}));
 $("cachePanel").addEventListener("toggle",()=>{if($("cachePanel").open)renderCacheDetails()});
 $("matchList").addEventListener("click",e=>{
- if(e.target.closest("[data-open-settings]"))openSettings();
- if(e.target.closest("[data-open-power-help]"))openPowerHelp();
+ if(e.target.closest("[data-open-settings]")){openSettings();return}
+ if(e.target.closest("[data-open-power-help]")){openPowerHelp();return}
+ const tb=e.target.closest("[data-team]");
+ if(tb)openTeamDetail(+tb.dataset.team);
 });
 $("allMatchList").addEventListener("click",e=>{
- if(e.target.closest("[data-open-settings]"))openSettings();
+ if(e.target.closest("[data-open-settings]")){openSettings();return}
+ const tb=e.target.closest("[data-team]");
+ if(tb)openTeamDetail(+tb.dataset.team);
 });
 $("playoffContent").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
