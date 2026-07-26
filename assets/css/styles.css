@@ -136,6 +136,9 @@ dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
 dialog#teamDetail h3{margin:0 0 10px;font-size:17px}
 .tdloc{margin-top:10px;font-size:13px;color:var(--muted)}
 #teamDetailClose{margin-top:12px;width:100%}
+.videolink{display:inline-block;margin-left:8px;padding:1px 8px;border:1px solid var(--line);border-radius:999px;font-size:11px;font-weight:700;color:var(--gold);text-decoration:none;white-space:nowrap;vertical-align:middle}
+.videolink:active{background:var(--goldbg)}
+.pmeta .videolink{margin-left:6px}
 .cachelist{margin:6px 0 0;padding-left:18px;max-height:150px;overflow:auto;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
 #cacheDetails>div{margin-bottom:3px}
 .steps{margin:0;padding-left:20px;font-size:13px;line-height:1.5;color:var(--text)}
