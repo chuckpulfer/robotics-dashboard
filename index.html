@@ -10,7 +10,7 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=22">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=23">
   <title>RoboGear Pass</title>
 </head>
 <body>
@@ -36,31 +36,34 @@
 <section class="page" id="page-settings">
   <h2 class="section-title">Settings</h2>
   <div class="status" id="statusDetail">No refresh yet.</div>
-  <details open><summary>Event and API</summary><div class="settings">
+  <details open><summary>Team and event</summary><div class="settings">
     <label class="combo">Your team<input id="teamPicker" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type a team number or name" enterkeyhint="search"><div class="combolist" id="teamPickerList" hidden></div></label>
-    <div class="note">Search by team number or name and pick your team from the list. With a TBA API key, the full FRC team directory downloads once and stays cached until you update it.</div>
+    <div class="note">Search by number or name.</div>
     <button class="iconbtn" id="refreshTeamsBtn" type="button">Update team list</button>
     <div class="note" id="teamDirNote"></div>
     <label id="eventSelectWrap">Event<select id="eventSelect"></select></label>
-    <div class="note" id="eventAutoNote">Loads every event your team attends from The Blue Alliance (district, regional, state, offseason, and more). Events are cached locally and grouped by season. The app auto-selects whichever event is happening today.</div>
+    <div class="note" id="eventAutoNote">Your team’s events, newest first. Today’s event is picked automatically.</div>
     <div class="note" id="eventKeyNote"></div>
     <label id="eventKeyWrap" hidden>Event key<input id="eventKey" value="2026iri" autocapitalize="none" spellcheck="false"></label>
-    <div class="note" id="eventKeyHelp" hidden>The Blue Alliance code for the event you are at, such as <strong>2026iri</strong>. Copy it from the event URL on <a href="https://www.thebluealliance.com/events/2026" target="_blank" rel="noopener">thebluealliance.com</a> (the part after <strong>/event/</strong>).</div>
+    <div class="note" id="eventKeyHelp" hidden>The code from the event’s <a href="https://www.thebluealliance.com/events/2026" target="_blank" rel="noopener">TBA</a> URL, such as <strong>2026iri</strong>.</div>
+    <button class="primary" id="saveTeamBtn" type="button">Save and refresh</button>
+  </div></details>
+  <details open><summary>API and data</summary><div class="settings">
     <label>TBA read API key<input id="tbaKey" type="password" autocomplete="off"></label>
-    <div class="note">A personal read-only key from The Blue Alliance. It lets this app download schedules, rankings, team names, and OPRs. Create one for free on your <a href="https://www.thebluealliance.com/account" target="_blank" rel="noopener">TBA account page</a>. The key stays in this browser only and is never committed to the repo.</div>
+    <div class="note">Free read-only key from your <a href="https://www.thebluealliance.com/account" target="_blank" rel="noopener">TBA account page</a>. Stored only in this browser.</div>
     <label>Auto refresh seconds<input id="refreshSeconds" type="number" min="15" max="3600" value="300"></label>
-    <div class="note">Default is 300 seconds (5 minutes).</div>
+    <div class="note">Minimum 15. Default 300.</div>
     <label class="check"><input id="statboticsEnabled" type="checkbox"> Enable Statbotics EPA</label>
-    <div class="note">When enabled, the app prefers season-wide EPA from Statbotics and falls back to TBA event OPR. Disabled by default, so the app uses TBA OPR only.</div>
-    <button class="primary" id="saveBtn" type="button">Save and refresh</button>
+    <div class="note">Prefer season-wide EPA over event OPR.</div>
+    <button class="primary" id="saveApiBtn" type="button">Save and refresh</button>
   </div></details>
   <details id="cachePanel"><summary>Offline cache</summary><div class="settings">
-    <div class="note">The app shell is cached by the service worker and kept indefinitely, so the app opens instantly and works offline. When a new version is deployed the cache is replaced automatically.</div>
+    <div class="note">App files stay cached so it opens instantly and works offline. New versions replace them automatically.</div>
     <div class="note" id="cacheDetails">Checking cached files…</div>
     <button class="iconbtn" id="clearCacheBtn" type="button">Clear app cache</button>
-    <div class="note">Removes the cached app shell and reloads fresh copies from the server. Your settings and downloaded event data are kept.</div>
+    <div class="note">Re-downloads the app files. Settings and event data are kept.</div>
     <button class="iconbtn" id="clearBtn" type="button">Clear downloaded data</button>
-    <div class="note">Clears the stored schedule, rankings, scores, power ratings, and your saved settings, including the API key.</div>
+    <div class="note">Clears schedules, rankings, and settings, including the API key.</div>
   </div></details>
   <details id="powerHelp"><summary>Power ratings explained (OPR &amp; EPA)</summary><div class="settings helpcopy">
     <p id="powerHelpStatus"></p>
@@ -87,5 +90,5 @@
   <button class="iconbtn" id="teamDetailClose" type="button">Close</button>
 </dialog>
 
-<script src="./assets/js/app.js?v=30"></script>
+<script src="./assets/js/app.js?v=31"></script>
 </body></html>
