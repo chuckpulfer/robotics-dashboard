@@ -55,6 +55,11 @@ async function runTimed(fn,ms=OP_TIMEOUT_MS){
  }
 }
 function hasApiKey(){return!!config.tbaKey?.trim()}
+// ETags stand for data we already hold. Whenever that data is deliberately discarded
+// the matching ETags have to go too, or the server answers 304 for a copy we no longer
+// have and we are left with nothing.
+function forgetEtag(key){delete etags[key];save(K.etags,etags)}
+function forgetAllEtags(){etags={};save(K.etags,etags)}
 function teamDirectory(){return {...NAMES,...(allTeamsCache?.teams||{}),...teams}}
 async function loadAllTeams(force=false){
  if(!hasApiKey()||allTeamsLoading)return;
@@ -169,14 +174,23 @@ function renderEventSelect(){
  updateEventKeyNote();
 }
 async function fetchTeamEventsYear(year,byYear){
+ const key=`te:${team}:${year}`, url=`https://www.thebluealliance.com/api/v3/team/frc${team}/events/${year}/simple`;
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/team/frc${team}/events/${year}/simple`,`te:${team}:${year}`);
+  const data=await api(url,key);
   if(data)byYear[year]=data;
  }catch{}
- if(!byYear[year]){
-  const cached=readTeamEventsCache();
-  if(cached?.byYear?.[year])byYear[year]=cached.byYear[year];
- }
+ if(byYear[year])return;
+ const cached=readTeamEventsCache();
+ if(cached?.byYear?.[year]){byYear[year]=cached.byYear[year];return}
+ // Nothing local and nothing returned means a 304 answered "you already have it" for
+ // data we no longer hold. Drop the stale ETag and ask for a full copy. This also
+ // repairs installs already stuck with an empty event list.
+ if(!etags[key])return;
+ forgetEtag(key);
+ try{
+  const data=await api(url,key);
+  if(data)byYear[year]=data;
+ }catch{}
 }
 async function loadTeamEvents({autoPick=!config.eventManual}={}){
  syncEventUI();
@@ -817,7 +831,7 @@ $("refreshBtn").addEventListener("click",async()=>{
 });
 $("eventSelect").addEventListener("change",()=>{
  setEventKey($("eventSelect").value,{manual:true});
- localStorage.removeItem(K.matches);matches=[];
+ localStorage.removeItem(K.matches);matches=[];forgetAllEtags();
  delete allMatches[config.eventKey];
  delete playoffMatches[config.eventKey];
  delete allianceData[config.eventKey];
@@ -846,7 +860,7 @@ $("saveTeamBtn").addEventListener("click",async()=>{
  const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
  config={...config,team:nextTeam,eventKey:($("eventSelect").value||$("eventKey").value).trim()};
  save(K.config,config);team=nextTeam;
- if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
+ if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[];forgetAllEtags()}
  setPickerTeam(team);
  const ok=await runTimed(async()=>{
   await loadTeamEvents({autoPick:teamChanged||!config.eventManual});
