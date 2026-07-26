@@ -24,17 +24,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Stamp build version
+      # Copy only what the site serves, rather than publishing the whole repo. An
+      # allowlist means new test or tooling files never leak into the deploy by
+      # default. CNAME has to come along or the custom domain is dropped.
+      - name: Assemble the site
         run: |
+          set -euo pipefail
           VERSION="${GITHUB_SHA::7}"
-          sed -i "s/__APP_VERSION__/${VERSION}/g" version.json index.html
+          mkdir -p _site
+          cp -r index.html version.json manifest.webmanifest sw.js CNAME assets _site/
+          sed -i "s/__APP_VERSION__/${VERSION}/g" _site/index.html _site/version.json
           echo "Stamped version ${VERSION}"
+
+      # Catches a stamping step that silently stopped replacing the placeholder.
+      # Scoped to the two stamped files on purpose: app.js compares against the literal
+      # "__APP_VERSION__" to detect a local build, so a whole-tree grep always matches.
+      - name: Check the build was stamped
+        run: |
+          if grep -q "__APP_VERSION__" _site/index.html _site/version.json; then
+            echo "::error::__APP_VERSION__ was not replaced; the app would report an unstamped build and skip update checks"
+            exit 1
+          fi
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - id: deployment
         uses: actions/deploy-pages@v4
