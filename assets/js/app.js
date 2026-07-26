@@ -12,6 +12,9 @@ const FALLBACK=[
 ];
 const NAMES={27:"Team RUSH",234:"Cyber Blue",359:"Hawaiian Kids",469:"Las Guerrillas",484:"Roboforce",1002:"CircuitRunners",1023:"Bedford Express",1024:"Kil-A-Bytes",1261:"Robo Lions",1706:"Ratchet Rockers",1720:"PhyXTGears",1732:"Hilltoppers",1741:"Red Alert",1768:"Robo Chiefs",1792:"Round Table",1987:"Broncobots",2056:"OP Robotics",2377:"C Company",2468:"Team Appreciate",2481:"Roboteers",2767:"Stryke Force",3176:"Purple Precision",3414:"Hacks Tech",3641:"Flying Toasters",3940:"CyberTooth",4028:"Beak Squad",4499:"Highlanders",5687:"The Outliers",5907:"Cygnet",6721:"Tindley",7890:"TechnoNerds",8085:"MOJO",8608:"Alpha Bots",9401:"Knights",10021:"Golden Gears",11415:"Storm Surge"};
 const $=id=>document.getElementById(id);
+// Stamped with the commit SHA at deploy time; left as the placeholder when run locally.
+const APP_VERSION=document.querySelector('meta[name="app-version"]')?.content||"";
+const VERSION_STAMPED=!!APP_VERSION&&APP_VERSION!=="__APP_VERSION__";
 const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false});
@@ -176,16 +179,48 @@ function fmtBytes(n){
  if(n<1048576)return `${(n/1024).toFixed(1)} KB`;
  return `${(n/1048576).toFixed(1)} MB`;
 }
+function fmtDateTime(ms){
+ return Number.isFinite(ms)?new Date(ms).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):null;
+}
+// Newest Date header across the cached responses: when this copy was downloaded.
+async function cacheDownloadedAt(cache,keys){
+ let newest=null;
+ for(const req of keys){
+  const d=Date.parse((await cache.match(req))?.headers.get("date")||"");
+  if(Number.isFinite(d)&&(newest===null||d>newest))newest=d;
+ }
+ return newest;
+}
+async function fetchLatestVersion(){
+ try{
+  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store"});
+  return r.ok?(await r.json()).version||null:null;
+ }catch{return null}
+}
 async function cacheReport(){
  if(!window.caches)return null;
  const names=await caches.keys(), entries=[];
+ let downloadedAt=null;
  for(const name of names){
-  const keys=await (await caches.open(name)).keys();
+  const cache=await caches.open(name), keys=await cache.keys();
   entries.push({name,paths:keys.map(r=>new URL(r.url).pathname)});
+  const at=await cacheDownloadedAt(cache,keys);
+  if(at!==null&&(downloadedAt===null||at>downloadedAt))downloadedAt=at;
  }
  let usage=null;
  try{usage=(await navigator.storage?.estimate?.())?.usage??null}catch{}
- return {entries,usage};
+ return {entries,usage,downloadedAt};
+}
+// Compares the running build against the one currently deployed. version.json always
+// comes from the network, so this reports staleness even with everything else cached.
+async function renderFreshness(){
+ const el=$("cacheFreshness"); if(!el)return;
+ if(!VERSION_STAMPED){el.className="muted";el.textContent="Version checks only run on the deployed site.";return}
+ const latest=await fetchLatestVersion();
+ if(!$("cacheFreshness"))return;
+ if(!latest){el.className="warn";el.textContent="Could not reach the server to check for updates.";return}
+ if(latest===APP_VERSION){el.className="ok";el.textContent="Up to date."}
+ else{el.className="warn";el.textContent=`Update available: ${latest}. It installs automatically, or use Clear app cache.`}
 }
 async function renderCacheDetails(){
  const el=$("cacheDetails"); if(!el)return;
@@ -194,9 +229,14 @@ async function renderCacheDetails(){
  const paths=rep.entries.flatMap(c=>c.paths).sort();
  if(!paths.length){el.textContent="No files cached yet.";return}
  const used=rep.usage!=null?` · about ${fmtBytes(rep.usage)} stored`:"";
- el.innerHTML=`<div><strong>${paths.length}</strong> file${paths.length===1?"":"s"} cached${used}</div>
+ const when=fmtDateTime(rep.downloadedAt);
+ const build=VERSION_STAMPED?APP_VERSION:"not stamped (local build)";
+ el.innerHTML=`<div>Version <strong>${build}</strong>${when?` · downloaded ${when}`:""}</div>
+ <div id="cacheFreshness" class="muted">Checking for a newer version…</div>
+ <div><strong>${paths.length}</strong> file${paths.length===1?"":"s"} cached${used}</div>
  <div>Cache: ${rep.entries.map(c=>c.name).join(", ")}</div>
  <ul class="cachelist">${paths.map(p=>`<li>${p}</li>`).join("")}</ul>`;
+ renderFreshness();
 }
 function openSettings(){
  document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));
@@ -813,12 +853,11 @@ render();scrollToNextMatch("auto");loadTeamEvents().then(()=>refresh());startRef
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.
-const APP_VERSION=document.querySelector('meta[name="app-version"]')?.content||"";
 const VERSION_CHECK_MS=5*60*1000;
 let reloading=false;
 async function checkForUpdate(){
  // Skip when unstamped (local/dev) or when the tab is hidden.
- if(reloading||!APP_VERSION||APP_VERSION==="__APP_VERSION__"||document.hidden)return;
+ if(reloading||!VERSION_STAMPED||document.hidden)return;
  try{
   const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store"});
   if(!r.ok)return;
