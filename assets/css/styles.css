@@ -86,6 +86,7 @@ label.combo{position:relative}
 .primary:disabled{opacity:.75;cursor:wait}
 .primary.busy{animation:pulse 1s ease-in-out infinite}
 .primary.saved{background:var(--green);color:#fff}
+.primary.failed{background:var(--orange);color:var(--bg)}
 @keyframes pulse{50%{opacity:.55}}
 .helpcopy p{margin:0 0 10px;font-size:13px;line-height:1.45;color:var(--text)}
 .helpcopy code{font-size:12px;color:var(--muted)} .empty{padding:30px 12px;text-align:center;color:var(--muted)}

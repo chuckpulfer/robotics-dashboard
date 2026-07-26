@@ -31,6 +31,29 @@ let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", te
 setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
 
+// Venue wifi often accepts connections and then never answers. Without these a
+// request hangs forever and the Save button sits on "Saving…" with no way out.
+// Per request, then a shorter bound on a whole cycle: a dead connection should report
+// back in a handful of seconds rather than after every request times out in turn.
+const NET_TIMEOUT_MS=12000, OP_TIMEOUT_MS=25000;
+function timeoutSignal(ms=NET_TIMEOUT_MS){
+ if(AbortSignal.timeout)return AbortSignal.timeout(ms);
+ const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal; // iOS < 16
+}
+function withTimeout(p,ms,label="Timed out"){
+ let t;
+ return Promise.race([p,new Promise((_,rej)=>{t=setTimeout(()=>rej(Error(label)),ms)})]).finally(()=>clearTimeout(t));
+}
+// Bounds a whole refresh cycle and reports failure in the status line. Returns false
+// when it timed out so callers can surface it too.
+async function runTimed(fn,ms=OP_TIMEOUT_MS){
+ try{await withTimeout(fn(),ms,"timed out");return true}
+ catch{
+  $("statusTime").innerHTML='<span class="warn">Timed out</span>';
+  $("statusDetail").innerHTML='<span class="warn">Timed out. Check your connection and try again.</span>';
+  return false;
+ }
+}
 function hasApiKey(){return!!config.tbaKey?.trim()}
 function teamDirectory(){return {...NAMES,...(allTeamsCache?.teams||{}),...teams}}
 async function loadAllTeams(force=false){
@@ -39,7 +62,7 @@ async function loadAllTeams(force=false){
  allTeamsLoading=true;
  const t={};
  await Promise.allSettled([...Array(26).keys()].map(async p=>{
-  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store"});
+  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
   if(!r.ok)return;
   (await r.json()).forEach(x=>{t[tn(x.key)]=x.nickname||x.name});
  }));
@@ -193,7 +216,7 @@ async function cacheDownloadedAt(cache,keys){
 }
 async function fetchLatestVersion(){
  try{
-  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store"});
+  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store",signal:timeoutSignal(8000)});
   return r.ok?(await r.json()).version||null:null;
  }catch{return null}
 }
@@ -656,24 +679,27 @@ const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(btn,state){
  if(!btn)return;
- if(state==="busy"){btn.disabled=true;btn.classList.add("busy");btn.classList.remove("saved");btn.textContent="Saving…"}
- else if(state==="saved"){btn.disabled=false;btn.classList.remove("busy");btn.classList.add("saved");btn.textContent="Saved!";setTimeout(()=>setSaveButtonState(btn,"idle"),1600)}
- else{btn.disabled=false;btn.classList.remove("busy","saved");btn.textContent=SAVE_LABEL}
+ btn.classList.remove("busy","saved","failed");
+ if(state==="busy"){btn.disabled=true;btn.classList.add("busy");btn.textContent="Saving…"}
+ // The settings are already in local storage by this point; only the refresh failed.
+ else if(state==="failed"){btn.disabled=false;btn.classList.add("failed");btn.textContent="Saved · refresh failed";setTimeout(()=>setSaveButtonState(btn,"idle"),2800)}
+ else if(state==="saved"){btn.disabled=false;btn.classList.add("saved");btn.textContent="Saved!";setTimeout(()=>setSaveButtonState(btn,"idle"),1600)}
+ else{btn.disabled=false;btn.textContent=SAVE_LABEL}
 }
 function startRefreshTimer(){
  clearInterval(refreshTimer);
- refreshTimer=setInterval(()=>refresh(),Math.max(15,config.refreshSeconds||DEFAULT_REFRESH)*1000);
+ refreshTimer=setInterval(()=>runTimed(()=>refresh()),Math.max(15,config.refreshSeconds||DEFAULT_REFRESH)*1000);
 }
 async function api(url,etagKey){
  if(!hasApiKey())throw Error("TBA key required");
  const h={"X-TBA-Auth-Key":config.tbaKey}; if(etags[etagKey])h["If-None-Match"]=etags[etagKey];
- const r=await fetch(url,{headers:h,cache:"no-store"}); if(r.status===304)return null;if(!r.ok)throw Error(`TBA ${r.status}`);
+ const r=await fetch(url,{headers:h,cache:"no-store",signal:timeoutSignal()}); if(r.status===304)return null;if(!r.ok)throw Error(`TBA ${r.status}`);
  const e=r.headers.get("ETag");if(e){etags[etagKey]=e;save(K.etags,etags)}return r.json();
 }
 async function fetchStatbotics(ids){
  let good=0;
  await Promise.allSettled(ids.map(async t=>{try{
-  const r=await fetch(`https://api.statbotics.io/v3/team_year/${t}/${YEAR}`,{cache:"no-store"});if(!r.ok)throw 0;const d=await r.json();
+  const r=await fetch(`https://api.statbotics.io/v3/team_year/${t}/${YEAR}`,{cache:"no-store",signal:timeoutSignal()});if(!r.ok)throw 0;const d=await r.json();
   const total=+(d.epa?.total_points?.mean??d.epa?.total_points??d.epa?.mean??d.epa?.total??NaN);
   const wr=+(d.epa?.ranks?.total?.rank??d.epa?.rank?.total??d.epa_rank??NaN);
   epa[t]={total:Number.isFinite(total)?total:epa[t]?.total,rank:Number.isFinite(wr)?wr:epa[t]?.rank,source:"epa"};good++;
@@ -782,7 +808,13 @@ $("playoffContent").addEventListener("click",e=>{
 $("teamDetailClose").addEventListener("click",()=>$("teamDetail").close());
 $("teamDetail").addEventListener("click",e=>{if(e.target===$("teamDetail"))$("teamDetail").close()});
 $("powerHelpBtn").addEventListener("click",openPowerHelp);
-$("refreshBtn").addEventListener("click",()=>refresh(true));
+$("refreshBtn").addEventListener("click",async()=>{
+ const b=$("refreshBtn");
+ if(b.disabled)return; // also stops a second tap stacking another refresh
+ b.disabled=true;
+ await runTimed(()=>refresh(true));
+ b.disabled=false;
+});
 $("eventSelect").addEventListener("change",()=>{
  setEventKey($("eventSelect").value,{manual:true});
  localStorage.removeItem(K.matches);matches=[];
@@ -810,29 +842,30 @@ $("refreshTeamsBtn").addEventListener("click",async()=>{
 $("saveTeamBtn").addEventListener("click",async()=>{
  const btn=$("saveTeamBtn");
  setSaveButtonState(btn,"busy");
- try{
-  const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
-  config={...config,team:nextTeam,eventKey:($("eventSelect").value||$("eventKey").value).trim()};
-  save(K.config,config);team=nextTeam;
-  if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
-  setPickerTeam(team);
+ // Settings persist before any network work, so a dead connection never loses them.
+ const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
+ config={...config,team:nextTeam,eventKey:($("eventSelect").value||$("eventKey").value).trim()};
+ save(K.config,config);team=nextTeam;
+ if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
+ setPickerTeam(team);
+ const ok=await runTimed(async()=>{
   await loadTeamEvents({autoPick:teamChanged||!config.eventManual});
   await refresh(true);
-  setSaveButtonState(btn,"saved");
- }catch{setSaveButtonState(btn,"idle")}
+ });
+ setSaveButtonState(btn,ok?"saved":"failed");
 });
 $("saveApiBtn").addEventListener("click",async()=>{
  const btn=$("saveApiBtn");
  setSaveButtonState(btn,"busy");
- try{
-  config={...config,tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),statbotics:$("statboticsEnabled").checked};
-  save(K.config,config);
-  syncEventUI();
+ config={...config,tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),statbotics:$("statboticsEnabled").checked};
+ save(K.config,config);
+ syncEventUI();
+ startRefreshTimer();
+ const ok=await runTimed(async()=>{
   await loadTeamEvents({autoPick:!config.eventManual});
   await refresh(true);
-  startRefreshTimer();
-  setSaveButtonState(btn,"saved");
- }catch{setSaveButtonState(btn,"idle")}
+ });
+ setSaveButtonState(btn,ok?"saved":"failed");
 });
 $("clearCacheBtn").addEventListener("click",async()=>{
  const b=$("clearCacheBtn");
@@ -849,7 +882,7 @@ $("teamList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
  if(row)openTeamDetail(+row.dataset.team);
 });
-render();scrollToNextMatch("auto");loadTeamEvents().then(()=>refresh());startRefreshTimer();renderCacheDetails();
+render();scrollToNextMatch("auto");loadTeamEvents().then(()=>runTimed(()=>refresh()));startRefreshTimer();renderCacheDetails();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.
@@ -859,7 +892,7 @@ async function checkForUpdate(){
  // Skip when unstamped (local/dev) or when the tab is hidden.
  if(reloading||!VERSION_STAMPED||document.hidden)return;
  try{
-  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store"});
+  const r=await fetch("./version.json?_="+Date.now(),{cache:"no-store",signal:timeoutSignal(8000)});
   if(!r.ok)return;
   const latest=(await r.json()).version;
   if(latest&&latest!==APP_VERSION){
