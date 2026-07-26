@@ -10,7 +10,7 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=17">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=18">
   <title>RoboGear Pass</title>
 </head>
 <body>
@@ -55,9 +55,13 @@
     <div class="note">When enabled, the app prefers season-wide EPA from Statbotics and falls back to TBA event OPR. Disabled by default, so the app uses TBA OPR only.</div>
     <button class="primary" id="saveBtn" type="button">Save and refresh</button>
   </div></details>
-  <details><summary>Offline cache</summary><div class="settings">
+  <details id="cachePanel"><summary>Offline cache</summary><div class="settings">
+    <div class="note">The app shell is cached by the service worker and kept indefinitely, so the app opens instantly and works offline. When a new version is deployed the cache is replaced automatically.</div>
+    <div class="note" id="cacheDetails">Checking cached files…</div>
+    <button class="iconbtn" id="clearCacheBtn" type="button">Clear app cache</button>
+    <div class="note">Removes the cached app shell and reloads fresh copies from the server. Your settings and downloaded event data are kept.</div>
     <button class="iconbtn" id="clearBtn" type="button">Clear downloaded data</button>
-    <div class="note">The app shell remains available offline through the service worker. The most recently downloaded schedule, rankings, scores, and power ratings remain in local storage.</div>
+    <div class="note">Clears the stored schedule, rankings, scores, power ratings, and your saved settings, including the API key.</div>
   </div></details>
   <details id="powerHelp"><summary>Power ratings explained (OPR &amp; EPA)</summary><div class="settings helpcopy">
     <p id="powerHelpStatus"></p>
@@ -85,5 +89,5 @@
   <button class="iconbtn" id="teamDetailClose" type="button">Close</button>
 </dialog>
 
-<script src="./assets/js/app.js?v=25"></script>
+<script src="./assets/js/app.js?v=26"></script>
 </body></html>

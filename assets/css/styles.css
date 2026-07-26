@@ -128,3 +128,4 @@ dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
 dialog#teamDetail h3{margin:0 0 10px;font-size:17px}
 .tdloc{margin-top:10px;font-size:13px;color:var(--muted)}
 #teamDetailClose{margin-top:12px;width:100%}
+.cachelist{margin:6px 0 0;padding-left:18px;max-height:150px;overflow:auto;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
