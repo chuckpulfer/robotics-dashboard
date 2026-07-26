@@ -400,7 +400,10 @@ function matchCard(m){
  const meta=matchCardMeta(m), w=matchWinner(m);
  return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${matchLabel(m)}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
 }
-function renderMatches(){$("matchList").innerHTML=myMatchList().map(matchCard).join("")}
+function renderMatches(){
+ const list=myMatchList();
+ $("matchList").innerHTML=myStatusHtml()+(list.map(matchCard).join("")||'<div class="empty">No matches loaded.</div>');
+}
 function closestMatchToNow(allMatches){
  const now=Date.now()/1000;
  return allMatches.sort((a,b)=>{
