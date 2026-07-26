@@ -341,18 +341,14 @@ function matchCardMeta(m){
  const t=fmtMatchTime(m);
  return {text:t?`Est. ${t}`:"Time TBD",cls:"pending"};
 }
-function latestMatchTarget(){
- const sorted=myMatchList();
- const played=sorted.filter(matchDone);
- if(played.length)return played[played.length-1];
- return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
-}
-function scrollToLatestMatch(){
- const m=latestMatchTarget(); if(!m?.key)return;
- requestAnimationFrame(()=>document.getElementById("match-"+m.key)?.scrollIntoView({behavior:"smooth",block:"center"}));
-}
 function nextMatch(){
  const sorted=myMatchList(); return sorted.find(m=>!matchDone(m))||sorted[sorted.length-1];
+}
+// The match list is a single timeline with past matches above, so open it parked on
+// the next match. scroll-margin-top keeps it clear of the sticky header.
+function scrollToNextMatch(behavior="smooth"){
+ const m=nextMatch(); if(!m?.key)return;
+ requestAnimationFrame(()=>document.getElementById("match-"+m.key)?.scrollIntoView({behavior,block:"start"}));
 }
 function probability(m){
  const re=m.red.reduce((a,t)=>a+(+epa[t]?.total||0),0), be=m.blue.reduce((a,t)=>a+(+epa[t]?.total||0),0);
@@ -377,23 +373,18 @@ function myStatusHtml(){
  }
  return `<div class="hero mystatus"><div class="metrics m${cells.length}">${cells.join("")}</div></div>`;
 }
-function renderNext(){
- const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
- const top=keyReminder+myStatusHtml();
- const list=myMatchList();
- const m=list.find(x=>!matchDone(x))||list[list.length-1];
- if(!m){$("nextContent").innerHTML=top+'<div class="empty">No matches loaded.</div>';return}
- const after=`<h2 class="section-title">After this</h2>${list.filter(x=>matchOrd(x)>matchOrd(m)).slice(0,2).map(matchCard).join("")||'<div class="empty">No later matches.</div>'}`;
- if(m.pending){$("nextContent").innerHTML=top+pendingCard(m,true)+after;return}
+// The next match gets a taller card in its chronological slot: match title, when it
+// starts, and the win estimate, none of which the plain cards carry.
+function nextMatchCard(m){
+ if(m.pending)return pendingCard(m,true);
  const p=probability(m), mine=m.red.includes(team)?"RED":"BLUE";
  const played=matchPlayTime(m), est=fmtMatchTime(m);
  const whenLabel=matchHasScore(m)?(played?`Final · ${played}`:"Final"):matchDone(m)?(played?`Played · ${played}`:"Pending"):est?`Est. ${est}`:"Time not posted";
- $("nextContent").innerHTML=`${top}<div class="hero"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">${matchLabel(m)}</div>
+ return `<div class="hero nexthero" id="match-${m.key}"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">${matchLabel(m)}</div>
  <div class="countdown">${whenLabel}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div><button type="button" class="helpbtn power-help-inline" data-open-power-help aria-label="Explain ${powerLabel}">?</button>`:""}
  ${matchHasScore(m)?matchScoreboard(m):""}
- ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>
- ${after}`;
+ ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>`;
 }
 function matchCard(m){
  if(m.pending)return pendingCard(m);
@@ -401,8 +392,13 @@ function matchCard(m){
  return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${matchLabel(m)}</div><div class="score ${meta.cls}">${meta.text}</div>${matchHasScore(m)?matchScoreboard(m):""}${alliance("red",m.red,w==="red")}${alliance("blue",m.blue,w==="blue")}</div>`;
 }
 function renderMatches(){
+ const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load live schedules, rankings, and team names.</div>':"";
+ // next must come from this same list: myMatchList() rebuilds its objects each call,
+ // so an identity check against a separately-built list would never match.
  const list=myMatchList();
- $("matchList").innerHTML=myStatusHtml()+(list.map(matchCard).join("")||'<div class="empty">No matches loaded.</div>');
+ const next=list.find(m=>!matchDone(m))||list[list.length-1];
+ const cards=list.map(m=>m===next?nextMatchCard(m):matchCard(m)).join("");
+ $("matchList").innerHTML=keyReminder+myStatusHtml()+(cards||'<div class="empty">No matches loaded.</div>');
 }
 function closestMatchToNow(allMatches){
  const now=Date.now()/1000;
@@ -615,7 +611,7 @@ function renderPlayoffs(){
  }
  el.innerHTML=keyReminder+champHtml+aHtml+bHtml;
 }
-function render(){renderHeader();renderNext();renderMatches();renderAllMatches();renderTeams();renderPlayoffs()}
+function render(){renderHeader();renderMatches();renderAllMatches();renderTeams();renderPlayoffs()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(state){
@@ -725,9 +721,9 @@ async function refresh(force=false){
  $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
  $("statusDetail").innerHTML=`<span class="ok">Updated ${t}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToLatestMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();requestAnimationFrame(syncStickyOffsets)}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToNextMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();requestAnimationFrame(syncStickyOffsets)}));
 $("cachePanel").addEventListener("toggle",()=>{if($("cachePanel").open)renderCacheDetails()});
-$("nextContent").addEventListener("click",e=>{
+$("matchList").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]"))openSettings();
  if(e.target.closest("[data-open-power-help]"))openPowerHelp();
 });
@@ -794,7 +790,7 @@ $("teamList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
  if(row)openTeamDetail(+row.dataset.team);
 });
-render();loadTeamEvents().then(()=>refresh());startRefreshTimer();renderCacheDetails();
+render();scrollToNextMatch("auto");loadTeamEvents().then(()=>refresh());startRefreshTimer();renderCacheDetails();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.
