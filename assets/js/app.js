@@ -614,10 +614,10 @@ function renderPlayoffs(){
 function render(){renderHeader();renderMatches();renderAllMatches();renderTeams();renderPlayoffs()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
-function setSaveButtonState(state){
- const btn=$("saveBtn");
+function setSaveButtonState(btn,state){
+ if(!btn)return;
  if(state==="busy"){btn.disabled=true;btn.classList.add("busy");btn.classList.remove("saved");btn.textContent="Saving…"}
- else if(state==="saved"){btn.disabled=false;btn.classList.remove("busy");btn.classList.add("saved");btn.textContent="Saved!";setTimeout(()=>setSaveButtonState("idle"),1600)}
+ else if(state==="saved"){btn.disabled=false;btn.classList.remove("busy");btn.classList.add("saved");btn.textContent="Saved!";setTimeout(()=>setSaveButtonState(btn,"idle"),1600)}
  else{btn.disabled=false;btn.classList.remove("busy","saved");btn.textContent=SAVE_LABEL}
 }
 function startRefreshTimer(){
@@ -765,19 +765,34 @@ $("refreshTeamsBtn").addEventListener("click",async()=>{
  await loadAllTeams(true);
  b.disabled=false;b.textContent="Update team list";
 });
-$("saveBtn").addEventListener("click",async()=>{
- setSaveButtonState("busy");
+// Each settings section saves only its own fields, merging into the shared config so
+// one section's Save never overwrites what the other holds.
+$("saveTeamBtn").addEventListener("click",async()=>{
+ const btn=$("saveTeamBtn");
+ setSaveButtonState(btn,"busy");
  try{
   const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
-  config={eventKey:($("eventSelect").value||$("eventKey").value).trim(),tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),team:nextTeam,eventManual:config.eventManual,statbotics:$("statboticsEnabled").checked};
+  config={...config,team:nextTeam,eventKey:($("eventSelect").value||$("eventKey").value).trim()};
   save(K.config,config);team=nextTeam;
   if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[]}
   setPickerTeam(team);
   await loadTeamEvents({autoPick:teamChanged||!config.eventManual});
   await refresh(true);
+  setSaveButtonState(btn,"saved");
+ }catch{setSaveButtonState(btn,"idle")}
+});
+$("saveApiBtn").addEventListener("click",async()=>{
+ const btn=$("saveApiBtn");
+ setSaveButtonState(btn,"busy");
+ try{
+  config={...config,tbaKey:$("tbaKey").value.trim(),refreshSeconds:Math.max(15,+$("refreshSeconds").value||DEFAULT_REFRESH),statbotics:$("statboticsEnabled").checked};
+  save(K.config,config);
+  syncEventUI();
+  await loadTeamEvents({autoPick:!config.eventManual});
+  await refresh(true);
   startRefreshTimer();
-  setSaveButtonState("saved");
- }catch{setSaveButtonState("idle")}
+  setSaveButtonState(btn,"saved");
+ }catch{setSaveButtonState(btn,"idle")}
 });
 $("clearCacheBtn").addEventListener("click",async()=>{
  const b=$("clearCacheBtn");
