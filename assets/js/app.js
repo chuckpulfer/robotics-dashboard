@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1"};
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -28,8 +28,25 @@ let teamLocations=load(K.teamLoc,{});
 let allMatches=load(K.allMatches,{});
 let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
+let allEventsCache=load(K.allEvents,{}), allEventsLoading=false, eventSearch="";
+// Research mode points the whole app at someone else's event without disturbing yours.
+let research=load(K.research,{active:false,eventKey:"",name:""});
+function researching(){return !!research.active&&!!research.eventKey}
+function activeEventKey(){return researching()?research.eventKey:config.eventKey}
+// allMatches, playoffMatches and allianceData are already keyed by event, so both modes
+// can share them. matches, rankings and epa are not, so each mode keeps its own copy —
+// otherwise browsing another event would overwrite what was downloaded for your own.
+let liveCtx={matches,rankings,epa}, researchCtx={matches:[],rankings:{},epa:{}};
+function stashCtx(){const c=researching()?researchCtx:liveCtx;c.matches=matches;c.rankings=rankings;c.epa=epa}
+function applyCtx(){const c=researching()?researchCtx:liveCtx;matches=c.matches;rankings=c.rankings;epa=c.epa}
+// Research data is deliberately transient: it must never land in the keys holding your
+// own event's downloads.
+function saveLive(key,val){if(!researching())save(key,val)}
 setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
+$("researchYear").innerHTML=seasonYears().map(y=>`<option value="${y}">${y}</option>`).join("");
+updateEventDirNote();renderResearchBanner();
+if(researching())applyCtx();
 
 // Venue wifi often accepts connections and then never answers. Without these a
 // request hangs forever and the Save button sits on "Saving…" with no way out.
@@ -115,6 +132,65 @@ function renderTeamPickerList(){
  if(!items.length){list.hidden=true;list.innerHTML="";return}
  list.innerHTML=items.map(([n,name])=>`<button type="button" data-team="${n}"><b>${n}</b><span>${name||"Team "+n}</span></button>`).join("");
  list.hidden=false;
+}
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function researchYear(){return +$("researchYear")?.value||YEAR}
+async function loadAllEvents(year=researchYear(),force=false){
+ if(!hasApiKey()||allEventsLoading)return;
+ if(!force&&allEventsCache[year]?.events?.length)return;
+ allEventsLoading=true;
+ try{
+  const data=await api(`https://www.thebluealliance.com/api/v3/events/${year}/simple`,`ev:${year}`);
+  if(data){
+   allEventsCache[year]={updated:Date.now(),events:data.map(e=>({key:e.key,name:e.name,start_date:e.start_date,end_date:e.end_date}))
+    .sort((a,b)=>(a.start_date||"").localeCompare(b.start_date||"")||a.name.localeCompare(b.name))};
+   save(K.allEvents,allEventsCache);
+  }
+ }catch{}
+ allEventsLoading=false;
+ updateEventDirNote();
+ if(document.activeElement===$("eventPicker"))renderEventPickerList();
+}
+function updateEventDirNote(){
+ const el=$("eventDirNote"); if(!el)return;
+ const y=researchYear(), n=allEventsCache[y]?.events?.length||0;
+ el.textContent=n?`${n} ${y} events cached`:hasApiKey()?`No ${y} events downloaded yet.`:"Add a TBA API key to browse events.";
+}
+function eventPickerMatches(q){
+ const list=allEventsCache[researchYear()]?.events||[], s=(q||"").toLowerCase().trim();
+ if(!s)return list.slice(0,25);
+ return list.filter(e=>e.name.toLowerCase().includes(s)||e.key.toLowerCase().includes(s)).slice(0,25);
+}
+function renderEventPickerList(){
+ const el=$("eventPickerList"); if(!el)return;
+ const items=eventPickerMatches($("eventPicker").value);
+ if(!items.length){el.hidden=true;el.innerHTML="";return}
+ el.innerHTML=items.map(e=>`<button type="button" data-event="${esc(e.key)}" data-name="${esc(e.name)}"><b>${esc(e.key)}</b><span>${esc(e.name)}</span></button>`).join("");
+ el.hidden=false;
+}
+function renderResearchBanner(){
+ const el=$("researchBanner"); if(!el)return;
+ el.hidden=!researching();
+ if(!researching()){el.innerHTML="";return}
+ el.innerHTML=`<span class="rlabel">Research</span><span class="rname">${esc(research.name||research.eventKey)}</span><button type="button" class="iconbtn" data-exit-research>Back to my event</button>`;
+}
+// Swapping context before and after the flag flips is what keeps each mode's downloads
+// separate; without the stash the mode being left behind loses its data.
+async function enterResearch(eventKey,name){
+ if(!eventKey)return;
+ stashCtx();
+ research={active:true,eventKey,name:name||eventKey};save(K.research,research);
+ researchCtx={matches:[],rankings:{},epa:{}};
+ applyCtx();syncPowerLabels();renderResearchBanner();render();
+ $("eventPickerList").hidden=true;
+ await runTimed(()=>refresh(true));
+}
+async function exitResearch(){
+ if(!researching())return;
+ stashCtx();
+ research={active:false,eventKey:"",name:""};save(K.research,research);
+ applyCtx();syncPowerLabels();renderResearchBanner();render();
+ await runTimed(()=>refresh(true));
 }
 function todayYmd(){
  const d=new Date();
@@ -356,7 +432,7 @@ function teamRow(t){
  return `<div class="teamrow ${t===team?"mine":""}" data-team="${t}"><div class="identity"><span class="tnum tnum-tap">${t}</span><span class="tname">${teams[t]||"Team "+t}${t===team?" ⭐":""}</span></div><span class="rank">${rank(s.rank)}</span><span class="rank">${rank(r?.rank)}</span></div>`;
 }
 function teamNextMatch(t){
- const list=allMatches[config.eventKey]||[];
+ const list=allMatches[activeEventKey()]||[];
  return list.filter(m=>!matchDone(m)&&(m.red.includes(t)||m.blue.includes(t))).sort((a,b)=>a.q-b.q)[0]||null;
 }
 function teamNextLabel(t){
@@ -502,7 +578,7 @@ function closestMatchToNow(allMatches){
  })[0];
 }
 async function renderAllMatches(){
- const eventMatches=allMatches[config.eventKey]||await fetchAllEventMatches();
+ const eventMatches=allMatches[activeEventKey()]||await fetchAllEventMatches();
  if(!eventMatches.length){
   $("allMatchList").innerHTML=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load the full event schedule.</div>':'<div class="empty">No event matches loaded yet.</div>';
   return;
@@ -537,8 +613,8 @@ const BRACKET={
  13:{r:5,b:"lower",feeds:["L11","W12"]}
 };
 const BRACKET_ROUNDS=[[1,[1,2,3,4]],[2,[5,6,7,8]],[3,[9,10]],[4,[11,12]],[5,[13]]];
-function eventAlliances(){return allianceData[config.eventKey]||[]}
-function eventPlayoffs(){return playoffMatches[config.eventKey]||[]}
+function eventAlliances(){return allianceData[activeEventKey()]||[]}
+function eventPlayoffs(){return playoffMatches[activeEventKey()]||[]}
 function allianceNumByTeam(){
  const m={};
  eventAlliances().forEach((a,i)=>{
@@ -749,28 +825,30 @@ function mapTbaMatch(x){
  };
 }
 async function fetchAllEventMatches(){
- if(!hasApiKey())return allMatches[config.eventKey]||[];
+ if(!hasApiKey())return allMatches[activeEventKey()]||[];
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches`,`am2:${config.eventKey}`);
+  const ek=activeEventKey();
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${ek}/matches`,`am2:${ek}`);
   if(data){
-   allMatches[config.eventKey]=data.filter(x=>x.comp_level==="qm").map(mapTbaMatch);
-   playoffMatches[config.eventKey]=data.filter(x=>x.comp_level!=="qm").map(mapTbaMatch);
+   allMatches[ek]=data.filter(x=>x.comp_level==="qm").map(mapTbaMatch);
+   playoffMatches[ek]=data.filter(x=>x.comp_level!=="qm").map(mapTbaMatch);
    save(K.allMatches,allMatches);
    save(K.playoffs,playoffMatches);
   }
  }catch{}
- return allMatches[config.eventKey]||[];
+ return allMatches[activeEventKey()]||[];
 }
 async function fetchAlliances(){
  if(!hasApiKey())return;
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/alliances`,`al:${config.eventKey}`);
-  if(data){allianceData[config.eventKey]=data;save(K.alliances,allianceData)}
+  const ek=activeEventKey();
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${ek}/alliances`,`al:${ek}`);
+  if(data){allianceData[ek]=data;save(K.alliances,allianceData)}
  }catch{}
 }
 async function fetchTbaOprs(ids){
  if(!hasApiKey())return 0;
- const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/oprs`,`o:${config.eventKey}`);
+ const data=await api(`https://www.thebluealliance.com/api/v3/event/${activeEventKey()}/oprs`,`o:${activeEventKey()}`);
  if(!data){
   return ids.filter(t=>epa[t]?.source==="opr"&&Number.isFinite(epa[t]?.total)).length;
  }
@@ -782,11 +860,11 @@ async function fetchTbaOprs(ids){
 async function refreshPowerRatings(ids,notes){
  if(config.statbotics){
   const epaGood=await fetchStatbotics(ids);
-  if(epaGood){save(K.epa,epa);syncPowerLabels();notes.push(`${epaGood} EPA`);return}
+  if(epaGood){saveLive(K.epa,epa);syncPowerLabels();notes.push(`${epaGood} EPA`);return}
  }
  try{
   const data=await fetchTbaOprs(ids);
-  if(data){save(K.epa,epa);syncPowerLabels();notes.push(`${data} OPR from TBA`);return}
+  if(data){saveLive(K.epa,epa);syncPowerLabels();notes.push(`${data} OPR from TBA`);return}
   notes.push("OPR unavailable");
  }catch(e){notes.push(`OPR ${e.message||"cached"}`)}
  syncPowerLabels();
@@ -797,18 +875,18 @@ async function refresh(force=false){
  if(!hasApiKey())notes.push("TBA key not set");
  else{
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/matches`,`m2:${config.eventKey}`);
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${activeEventKey()}/matches`,`m2:${activeEventKey()}`);
   if(data){
    matches=data.filter(x=>x.comp_level==="qm"&&(x.alliances.red.team_keys.includes("frc"+team)||x.alliances.blue.team_keys.includes("frc"+team))).map(mapTbaMatch);
-   save(K.matches,matches);notes.push("matches updated")
+   saveLive(K.matches,matches);notes.push("matches updated")
   }else notes.push("matches unchanged");
  }catch(e){notes.push(`matches ${e.message||"cached"}`)}
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/rankings`,`r:${config.eventKey}`);
-  if(data){const n={};(data.rankings||[]).forEach(x=>{const t=tn(x.team_key);n[t]={rank:x.rank,record:`${x.record?.wins??0}-${x.record?.losses??0}-${x.record?.ties??0}`}});rankings=n;save(K.rankings,n);notes.push("ranks updated")}else notes.push("ranks unchanged");
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${activeEventKey()}/rankings`,`r:${activeEventKey()}`);
+  if(data){const n={};(data.rankings||[]).forEach(x=>{const t=tn(x.team_key);n[t]={rank:x.rank,record:`${x.record?.wins??0}-${x.record?.losses??0}-${x.record?.ties??0}`}});rankings=n;saveLive(K.rankings,n);notes.push("ranks updated")}else notes.push("ranks unchanged");
  }catch(e){notes.push(`ranks ${e.message||"cached"}`)}
  try{
-  const data=await api(`https://www.thebluealliance.com/api/v3/event/${config.eventKey}/teams/simple`,`t:${config.eventKey}`);
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${activeEventKey()}/teams/simple`,`t:${activeEventKey()}`);
   if(data){data.forEach(x=>teams[tn(x.key)]=x.nickname||x.name);save(K.teams,teams);notes.push("names updated");renderHeader()}
  }catch(e){notes.push(`names ${e.message||"cached"}`)}
  }
@@ -864,6 +942,22 @@ $("teamPickerList").addEventListener("pointerdown",e=>{
  const b=e.target.closest("[data-team]");
  if(b){e.preventDefault();setPickerTeam(+b.dataset.team);syncEventSelectForPicker()}
 });
+$("eventPicker").addEventListener("input",renderEventPickerList);
+$("eventPicker").addEventListener("focus",()=>{loadAllEvents();renderEventPickerList()});
+$("eventPicker").addEventListener("blur",()=>setTimeout(()=>{$("eventPickerList").hidden=true},150));
+$("eventPickerList").addEventListener("pointerdown",e=>{
+ const b=e.target.closest("[data-event]");
+ if(b){e.preventDefault();enterResearch(b.dataset.event,b.dataset.name)}
+});
+$("researchYear").addEventListener("change",()=>{updateEventDirNote();loadAllEvents();renderEventPickerList()});
+$("refreshEventsBtn").addEventListener("click",async()=>{
+ const b=$("refreshEventsBtn");
+ if(!hasApiKey()){updateEventDirNote();return}
+ b.disabled=true;b.textContent="Downloading…";
+ await loadAllEvents(researchYear(),true);
+ b.disabled=false;b.textContent="Update event list";
+});
+$("researchBanner").addEventListener("click",e=>{if(e.target.closest("[data-exit-research]"))exitResearch()});
 $("refreshTeamsBtn").addEventListener("click",async()=>{
  const b=$("refreshTeamsBtn");
  if(!hasApiKey()){updateTeamDirNote();return}

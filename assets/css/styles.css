@@ -136,6 +136,11 @@ dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
 dialog#teamDetail h3{margin:0 0 10px;font-size:17px}
 .tdloc{margin-top:10px;font-size:13px;color:var(--muted)}
 #teamDetailClose{margin-top:12px;width:100%}
+.researchbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--gold) 45%,var(--line));background:var(--goldbg);border-radius:12px;font-size:13px}
+.researchbar[hidden]{display:none}
+.researchbar .rlabel{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--gold)}
+.researchbar .rname{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.researchbar .iconbtn{flex:0 0 auto;font-size:12px;padding:5px 9px}
 .videolink{display:inline-block;margin-left:8px;padding:1px 8px;border:1px solid var(--line);border-radius:999px;font-size:11px;font-weight:700;color:var(--gold);text-decoration:none;white-space:nowrap;vertical-align:middle}
 .videolink:active{background:var(--goldbg)}
 .pmeta .videolink{margin-left:6px}
