@@ -50,7 +50,7 @@ function saveLive(key,val){if(!researching())save(key,val)}
 setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();renderEventSelect();
 $("researchYear").innerHTML=seasonYears().map(y=>`<option value="${y}">${y}</option>`).join("");
-updateEventDirNote();renderResearchBanner();
+updateEventDirNote();renderResearchBanner();if(researching())setPickerEvent(research.eventKey,research.name);
 if(researching())applyCtx();
 
 // Venue wifi often accepts connections and then never answers. Without these a
@@ -194,10 +194,21 @@ function eventPickerMatches(q){
 }
 function renderEventPickerList(){
  const el=$("eventPickerList"); if(!el)return;
- const items=eventPickerMatches($("eventPicker").value);
+ const items=eventPickerMatches(eventPickerUntouched($("eventPicker").value)?"":$("eventPicker").value);
  if(!items.length){el.hidden=true;el.innerHTML="";return}
  el.innerHTML=items.map(e=>`<button type="button" data-event="${esc(e.key)}" data-name="${esc(e.name)}"><b>${esc(e.key)}</b><span>${esc(e.name)}</span></button>`).join("");
  el.hidden=false;
+}
+function eventDisplay(key,name){return name&&name!==key?`${key} · ${name}`:key}
+// The picker shows the event you are researching. Like the team picker, that text is
+// not something the search would ever match, so treat it as "nothing typed yet".
+function eventPickerUntouched(q){
+ const s=(q||"").trim();
+ return !s||(researching()&&(s===eventDisplay(research.eventKey,research.name)||s===research.eventKey));
+}
+function setPickerEvent(key,name){
+ $("eventPicker").value=key?eventDisplay(key,name):"";
+ $("eventPickerList").hidden=true;
 }
 function renderResearchBanner(){
  const el=$("researchBanner"); if(!el)return;
@@ -213,14 +224,16 @@ async function enterResearch(eventKey,name){
  research={active:true,eventKey,name:name||eventKey};save(K.research,research);
  researchCtx={matches:[],rankings:{},epa:{}};
  applyCtx();syncPowerLabels();renderResearchBanner();render();
- $("eventPickerList").hidden=true;
+ // Show the chosen event in the box. Without this it keeps the half-typed search text,
+ // so nothing on screen confirms which event the tap actually picked.
+ setPickerEvent(research.eventKey,research.name);
  await runTimed(()=>refresh(true));
 }
 async function exitResearch(){
  if(!researching())return;
  stashCtx();
  research={active:false,eventKey:"",name:""};save(K.research,research);
- applyCtx();syncPowerLabels();renderResearchBanner();render();
+ applyCtx();syncPowerLabels();renderResearchBanner();render();setPickerEvent("");
  await runTimed(()=>refresh(true));
 }
 function todayYmd(){
@@ -1061,16 +1074,33 @@ $("teamPicker").addEventListener("input",()=>{renderTeamPickerList();syncEventSe
 // being appended to it — the recents list stays one tap away underneath.
 $("teamPicker").addEventListener("focus",e=>{e.target.select();loadAllTeams();renderTeamPickerList()});
 $("teamPicker").addEventListener("blur",()=>setTimeout(()=>{$("teamPickerList").hidden=true},150));
-$("teamPickerList").addEventListener("pointerdown",e=>{
- const b=e.target.closest("[data-team]");
- if(b){e.preventDefault();setPickerTeam(+b.dataset.team);syncEventSelectForPicker()}
-});
+// Suggestions are chosen on pointerdown, which beats the input's blur and so keeps the
+// list from closing under the finger. Not every tap produces a usable pointerdown
+// though — a tap that starts with a hint of scroll inside the list, or a browser
+// without pointer events — so click is wired as a fallback and the two are deduped.
+function onComboPick(listId,attr,pick){
+ const list=$(listId); if(!list)return;
+ let last=0;
+ const choose=(e,viaPointer)=>{
+  const b=e.target.closest(`[${attr}]`);
+  if(!b)return;
+  const now=Date.now();
+  if(!viaPointer&&now-last<700)return; // the pointerdown already handled this tap
+  last=now;
+  e.preventDefault();
+  list.hidden=true;
+  pick(b);
+ };
+ list.addEventListener("pointerdown",e=>choose(e,true));
+ list.addEventListener("click",e=>choose(e,false));
+}
+onComboPick("teamPickerList","data-team",b=>{setPickerTeam(+b.dataset.team);syncEventSelectForPicker()});
 $("eventPicker").addEventListener("input",renderEventPickerList);
-$("eventPicker").addEventListener("focus",()=>{loadAllEvents();renderEventPickerList()});
+$("eventPicker").addEventListener("focus",e=>{e.target.select();loadAllEvents();renderEventPickerList()});
 $("eventPicker").addEventListener("blur",()=>setTimeout(()=>{$("eventPickerList").hidden=true},150));
-$("eventPickerList").addEventListener("pointerdown",e=>{
- const b=e.target.closest("[data-event]");
- if(b){e.preventDefault();enterResearch(b.dataset.event,b.dataset.name)}
+onComboPick("eventPickerList","data-event",b=>{
+ setPickerEvent(b.dataset.event,b.dataset.name);
+ enterResearch(b.dataset.event,b.dataset.name);
 });
 $("researchYear").addEventListener("change",()=>{updateEventDirNote();loadAllEvents();renderEventPickerList()});
 $("refreshEventsBtn").addEventListener("click",async()=>{
@@ -1082,11 +1112,14 @@ $("refreshEventsBtn").addEventListener("click",async()=>{
 });
 $("researchBanner").addEventListener("click",e=>{if(e.target.closest("[data-exit-research]"))exitResearch()});
 $("teamLookup").addEventListener("input",()=>renderLookupList());
-$("teamLookup").addEventListener("focus",()=>{loadAllTeams();renderLookupList()});
+$("teamLookup").addEventListener("focus",e=>{e.target.select();loadAllTeams();renderLookupList()});
 $("teamLookup").addEventListener("blur",()=>setTimeout(()=>{$("teamLookupList").hidden=true},150));
-$("teamLookupList").addEventListener("pointerdown",e=>{
- const b=e.target.closest("[data-team]");
- if(b){e.preventDefault();$("teamLookupList").hidden=true;openTeamSeason(+b.dataset.team)}
+onComboPick("teamLookupList","data-team",b=>{
+ const t=+b.dataset.team;
+ // Fill the box before navigating: coming back to Settings, the field then shows the
+ // team you looked up rather than the fragment you typed.
+ $("teamLookup").value=pickerDisplay(t);
+ openTeamSeason(t);
 });
 $("teamPageBack").addEventListener("click",closeTeamSeason);
 $("teamPage").addEventListener("click",e=>{
