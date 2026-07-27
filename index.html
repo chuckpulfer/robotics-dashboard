@@ -10,14 +10,18 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=28">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=29">
   <title>RoboGear Pass</title>
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="top"><div><h1>RoboGear Pass</h1><div class="sub" id="appSub">Team 10021 live dashboard</div></div>
+  <div class="top"><div><h1>RoboGear Pass</h1></div>
   <div class="topright"><span class="updated" id="statusTime">Loading…</span><button class="iconbtn" id="refreshBtn" type="button">Refresh</button></div></div>
+  <div class="context">
+    <button class="chip" id="teamChip" type="button" aria-haspopup="dialog"><span class="chiplabel">Team</span><span class="chipvalue" id="teamChipValue">—</span></button>
+    <button class="chip" id="eventChip" type="button" aria-haspopup="dialog"><span class="chiplabel">Event</span><span class="chipvalue" id="eventChipValue">—</span></button>
+  </div>
 </header>
 
 <div id="researchBanner" class="researchbar" hidden></div>
@@ -113,5 +117,15 @@
   <button class="iconbtn" id="teamDetailClose" type="button">Close</button>
 </dialog>
 
-<script src="./assets/js/app.js?v=38"></script>
+<dialog id="switcher" class="sheet">
+  <div class="sheethead">
+    <h3 id="switcherTitle">Team</h3>
+    <button class="iconbtn" id="switcherClose" type="button">Close</button>
+  </div>
+  <input id="switcherSearch" type="search" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" placeholder="Search">
+  <div class="sheetlist" id="switcherList"></div>
+  <p class="note sheetnote" id="switcherNote"></p>
+</dialog>
+
+<script src="./assets/js/app.js?v=39"></script>
 </body></html>

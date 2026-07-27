@@ -133,6 +133,40 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+/* The two context chips share the row and each truncates on its own, so a long event
+   name can never push the team chip off screen on a narrow phone. */
+.context{display:flex;gap:6px;margin-top:8px}
+/* Label above value rather than beside it: on a 390px phone the inline form spent a
+   third of each chip on the word TEAM and truncated the name that matters. */
+.chip{flex:1 1 0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  column-gap:6px;align-items:center;text-align:left;
+  border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:5px 10px 6px}
+.chip::after{content:"▾";grid-column:2;grid-row:2;color:var(--muted);font-size:10px}
+.chiplabel{grid-column:1/-1;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;line-height:1.4}
+.chipvalue{grid-column:1;grid-row:2;font-size:13px;font-weight:700;line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip.away{border-color:color-mix(in srgb,var(--orange) 55%,var(--line));background:color-mix(in srgb,var(--orange) 10%,var(--panel))}
+dialog.sheet{border:0;padding:0;background:var(--panel);color:var(--text);
+  width:min(100%,720px);max-width:100%;max-height:82vh;margin:auto auto 0;
+  border-radius:16px 16px 0 0;overflow:hidden}
+dialog.sheet[open]{display:flex;flex-direction:column}
+dialog.sheet::backdrop{background:rgba(0,0,0,.5)}
+.sheethead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 14px 8px;flex:0 0 auto}
+.sheethead h3{margin:0;font-size:17px}
+#switcherSearch{flex:0 0 auto;width:auto;margin:0 14px 10px;border-radius:10px}
+.sheetlist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line)}
+.sheetgroup{margin:0;padding:9px 14px 5px;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.06em;background:var(--bg);position:sticky;top:0}
+.sheetrow{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;border:0;
+  background:none;color:var(--text);padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+.sheetrow b{flex:0 0 auto;min-width:58px;font-variant-numeric:tabular-nums}
+.sheetrow span{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sheetrow[aria-current]{background:var(--goldbg)}
+.sheetrow[aria-current] b{color:var(--gold)}
+.sheetrow .away-tag{margin-left:auto;flex:0 0 auto;color:var(--orange);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.sheetempty{padding:16px 14px;color:var(--muted);font-size:13px}
+.sheetnote{margin:0;padding:10px 14px calc(12px + env(safe-area-inset-bottom));flex:0 0 auto;
+  border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
 dialog#teamDetail{border:0;border-radius:16px;padding:14px;background:var(--panel);color:var(--text);width:min(92vw,380px)}
 dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
 dialog#teamDetail h3{margin:0 0 10px;font-size:17px}

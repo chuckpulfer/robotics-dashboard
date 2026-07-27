@@ -1,6 +1,6 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1"};
-const RECENT_TEAMS_MAX=20;
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -29,6 +29,10 @@ let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=tea
 // the directory is every team that exists, this is the short list you keep coming back to.
 let recentTeams=(load(K.recentTeams,[])||[]).map(Number).filter(n=>n>0);
 if(!recentTeams.includes(team))recentTeams=[team,...recentTeams].slice(0,RECENT_TEAMS_MAX);
+// Same idea for events, but they need their name carried alongside the key: the event
+// directory is only downloaded with an API key, and the header has to read sensibly
+// before that lands.
+let recentEvents=(load(K.recentEvents,[])||[]).filter(e=>e&&e.key);
 let teamLocations=load(K.teamLoc,{});
 let allMatches=load(K.allMatches,{});
 let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
@@ -51,6 +55,7 @@ setPickerTeam(team);updateTeamDirNote();$("eventKey").value=config.eventKey;$("t
 syncEventUI();renderEventSelect();
 $("researchYear").innerHTML=seasonYears().map(y=>`<option value="${y}">${y}</option>`).join("");
 updateEventDirNote();renderResearchBanner();if(researching())setPickerEvent(research.eventKey,research.name);
+if(config.eventKey&&!recentEvents.some(e=>e.key===config.eventKey))rememberRecentEvent(config.eventKey);
 if(researching())applyCtx();
 
 // Venue wifi often accepts connections and then never answers. Without these a
@@ -187,6 +192,20 @@ function updateEventDirNote(){
  const y=researchYear(), n=allEventsCache[y]?.events?.length||0;
  el.textContent=n?`${n} ${y} events cached`:hasApiKey()?`No ${y} events downloaded yet.`:"Add a TBA API key to browse events.";
 }
+// The Settings picker searches one season at a time; the header switcher has no season
+// control, so it searches every season already downloaded, newest first.
+function allEventMatches(q){
+ const s=(q||"").toLowerCase().trim(); if(!s)return [];
+ const seen=new Set(), out=[];
+ for(const y of Object.keys(allEventsCache).sort((a,b)=>b.localeCompare(a)))
+  for(const e of allEventsCache[y]?.events||[]){
+   if(seen.has(e.key))continue;
+   if(!e.name.toLowerCase().includes(s)&&!e.key.toLowerCase().includes(s))continue;
+   seen.add(e.key);out.push(e);
+   if(out.length>=40)return out;
+  }
+ return out;
+}
 function eventPickerMatches(q){
  const list=allEventsCache[researchYear()]?.events||[], s=(q||"").toLowerCase().trim();
  if(!s)return list.slice(0,25);
@@ -200,6 +219,27 @@ function renderEventPickerList(){
  el.hidden=false;
 }
 function eventDisplay(key,name){return name&&name!==key?`${key} · ${name}`:key}
+// Every place an event name might be known, cheapest first. The header reads this on
+// every render, so it never reaches the network.
+function eventNameFor(key){
+ if(!key)return "";
+ if(researching()&&key===research.eventKey&&research.name)return research.name;
+ const mine=teamEvents.find(e=>e.key===key); if(mine?.name)return mine.name;
+ const remembered=recentEvents.find(e=>e.key===key); if(remembered?.name)return remembered.name;
+ for(const y of Object.keys(allEventsCache)){
+  const hit=allEventsCache[y]?.events?.find(e=>e.key===key);
+  if(hit?.name)return hit.name;
+ }
+ return "";
+}
+function rememberRecentEvent(key,name){
+ if(!key)return;
+ const kept=recentEvents.find(e=>e.key===key);
+ recentEvents=[{key,name:name||kept?.name||eventNameFor(key)||""},...recentEvents.filter(e=>e.key!==key)].slice(0,RECENT_EVENTS_MAX);
+ save(K.recentEvents,recentEvents);
+}
+// True when the event on screen is not one your team is attending — research mode.
+function awayEvent(key){return !!key&&teamEvents.length>0&&!teamEvents.some(e=>e.key===key)}
 // The picker shows the event you are researching. Like the team picker, that text is
 // not something the search would ever match, so treat it as "nothing typed yet".
 function eventPickerUntouched(q){
@@ -221,7 +261,8 @@ function renderResearchBanner(){
 async function enterResearch(eventKey,name){
  if(!eventKey)return;
  stashCtx();
- research={active:true,eventKey,name:name||eventKey};save(K.research,research);
+ research={active:true,eventKey,name:name||eventNameFor(eventKey)||eventKey};save(K.research,research);
+ rememberRecentEvent(research.eventKey,research.name);
  researchCtx={matches:[],rankings:{},epa:{}};
  applyCtx();syncPowerLabels();renderResearchBanner();render();
  // Show the chosen event in the box. Without this it keeps the half-typed search text,
@@ -229,12 +270,104 @@ async function enterResearch(eventKey,name){
  setPickerEvent(research.eventKey,research.name);
  await runTimed(()=>refresh(true));
 }
-async function exitResearch(){
- if(!researching())return;
+// Split from exitResearch so switching straight to one of your own events can drop
+// research mode without triggering a refresh of its own — the caller does one.
+function clearResearch(){
+ if(!researching())return false;
  stashCtx();
  research={active:false,eventKey:"",name:""};save(K.research,research);
- applyCtx();syncPowerLabels();renderResearchBanner();render();setPickerEvent("");
+ applyCtx();syncPowerLabels();renderResearchBanner();setPickerEvent("");
+ return true;
+}
+async function exitResearch(){
+ if(!clearResearch())return;
+ render();
  await runTimed(()=>refresh(true));
+}
+// One entry point for "show me this event", wherever the tap came from. An event your
+// team is attending becomes your own selection; anything else opens in research mode,
+// which is what keeps someone else's data out of your saved event.
+async function chooseEvent(key,name){
+ if(!key)return;
+ rememberRecentEvent(key,name);
+ if(awayEvent(key)){await enterResearch(key,name||eventNameFor(key));renderHeader();return}
+ clearResearch();
+ if(key!==config.eventKey){
+  setEventKey(key,{manual:true});
+  localStorage.removeItem(K.matches);matches=[];forgetAllEtags();
+  delete allMatches[key];delete playoffMatches[key];delete allianceData[key];
+ }
+ renderEventSelect();render();renderHeader();
+ await runTimed(()=>refresh(true));
+}
+// Switching your team is the same work the Settings save does, so both go through here.
+async function applyTeamChange(nextTeam,{eventKey=null}={}){
+ const changed=nextTeam!==team;
+ if(changed)clearResearch();
+ config={...config,team:nextTeam,eventKey:changed?"":(eventKey??config.eventKey)};
+ save(K.config,config);team=nextTeam;rememberRecentTeam(nextTeam);
+ if(changed){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[];forgetAllEtags()}
+ setPickerTeam(team);renderHeader();
+ const ok=await runTimed(async()=>{
+  await loadTeamEvents({autoPick:changed||!config.eventManual});
+  await refresh(true);
+ });
+ rememberRecentEvent(config.eventKey,eventNameFor(config.eventKey));
+ renderHeader();
+ return ok;
+}
+// ── Header switcher ────────────────────────────────────────────────────────────────
+// One sheet for both chips. A dropdown would have to share a phone's width with the
+// other chip; a sheet gets the whole screen, which is what makes room for the recents
+// and the search in the same view.
+let switcherMode="team";
+function switcherRow(id,num,name,{current=false,tag=""}={}){
+ return `<button type="button" class="sheetrow" data-pick="${esc(id)}"${current?' aria-current="true"':""}>`+
+  `<b>${esc(num)}</b><span>${esc(name)}</span>${tag?`<span class="away-tag">${esc(tag)}</span>`:""}</button>`;
+}
+function switcherGroup(label,rows){return rows.length?`<p class="sheetgroup">${label}</p>${rows.join("")}`:""}
+function renderSwitcherTeams(q){
+ const dir=teamDirectory();
+ if(q)return switcherGroup("Search results",teamPickerMatches(q).map(([n,name])=>switcherRow(n,n,name||"Team "+n,{current:+n===team})));
+ return switcherGroup("Recent teams",recentTeams.map(n=>switcherRow(n,n,dir[n]||"Team "+n,{current:+n===team})));
+}
+function renderSwitcherEvents(q){
+ const active=activeEventKey();
+ const row=e=>switcherRow(e.key,e.key,e.name||e.key,{current:e.key===active,tag:awayEvent(e.key)?"Research":""});
+ if(q)return switcherGroup("Search results",allEventMatches(q).map(row));
+ const mineKeys=new Set(teamEvents.map(e=>e.key));
+ return switcherGroup(`Team ${team} events`,teamEvents.map(row))+
+  switcherGroup("Recent events",recentEvents.filter(e=>!mineKeys.has(e.key)).map(e=>row({key:e.key,name:e.name||eventNameFor(e.key)})));
+}
+function renderSwitcher(){
+ const q=$("switcherSearch").value.trim();
+ const html=switcherMode==="team"?renderSwitcherTeams(q):renderSwitcherEvents(q);
+ $("switcherList").innerHTML=html||`<p class="sheetempty">${
+  switcherMode==="team"
+   ? (hasApiKey()?"No teams match. Try a number.":"Add a TBA API key in Settings to search every team.")
+   : (hasApiKey()?"No events match. Try a name or an event key.":"Add a TBA API key in Settings to browse events.")}</p>`;
+}
+function openSwitcher(mode){
+ switcherMode=mode;
+ $("switcherTitle").textContent=mode==="team"?"Team":"Event";
+ $("switcherSearch").placeholder=mode==="team"?"Search any team by number or name":"Search any event by name or key";
+ $("switcherSearch").value="";
+ $("switcherNote").textContent=mode==="team"
+  ?"Your recent teams are listed first. Search to switch to any other team."
+  :"Your team's events switch your own event. Any other event opens in research mode, and your own stays saved.";
+ if(mode==="team")loadAllTeams(); else loadAllEvents();
+ renderSwitcher();
+ $("switcher").showModal();
+}
+function closeSwitcher(){if($("switcher").open)$("switcher").close()}
+async function switcherPick(value){
+ closeSwitcher();
+ if(switcherMode==="team"){
+  const n=+value;
+  if(n&&n!==team)await applyTeamChange(n);
+  return;
+ }
+ if(value!==activeEventKey())await chooseEvent(value,eventNameFor(value));
 }
 function todayYmd(){
  const d=new Date();
@@ -331,6 +464,9 @@ async function loadTeamEvents({autoPick=!config.eventManual}={}){
  await Promise.all(seasonYears().map(y=>fetchTeamEventsYear(y,byYear)));
  saveTeamEventsCache(byYear);
  renderEventSelect();
+ // Names arrive with the event list, so backfill any recent entry stored without one.
+ recentEvents.forEach(e=>{if(!e.name)e.name=eventNameFor(e.key)});
+ save(K.recentEvents,recentEvents);
  const savedValid=teamEvents.some(e=>e.key===config.eventKey);
  if((autoPick||!savedValid)&&teamEvents.length){
   const picked=pickEventForToday(teamEvents);
@@ -419,7 +555,15 @@ function syncStickyOffsets(){
  set("--teams-sticky-h",document.querySelector(".teams-sticky"));
 }
 function renderHeader(){
- $("appSub").textContent=`Team ${team}${teams[team]?" · "+teams[team]:""} live dashboard`;
+ const name=teamDirectory()[team];
+ $("teamChipValue").textContent=`${team}${name?" · "+name:""}`;
+ $("teamChip").title=`Team ${team}${name?" · "+name:""}`;
+ const key=activeEventKey(), evName=eventNameFor(key);
+ $("eventChipValue").textContent=key?(evName||key):"Not set";
+ $("eventChip").title=key?eventDisplay(key,evName):"No event selected";
+ // The away tint is the quiet version of the research banner: it keeps "you are not
+ // looking at your own event" visible even once the banner has scrolled off.
+ $("eventChip").classList.toggle("away",researching()||awayEvent(key));
  requestAnimationFrame(syncStickyOffsets);
 }
 renderHeader();
@@ -1061,14 +1205,17 @@ $("refreshBtn").addEventListener("click",async()=>{
  await runTimed(()=>refresh(true));
  b.disabled=false;
 });
-$("eventSelect").addEventListener("change",()=>{
- setEventKey($("eventSelect").value,{manual:true});
- localStorage.removeItem(K.matches);matches=[];forgetAllEtags();
- delete allMatches[config.eventKey];
- delete playoffMatches[config.eventKey];
- delete allianceData[config.eventKey];
- refresh(true);
+$("eventSelect").addEventListener("change",()=>chooseEvent($("eventSelect").value,eventNameFor($("eventSelect").value)));
+$("teamChip").addEventListener("click",()=>openSwitcher("team"));
+$("eventChip").addEventListener("click",()=>openSwitcher("event"));
+$("switcherClose").addEventListener("click",closeSwitcher);
+$("switcherSearch").addEventListener("input",renderSwitcher);
+$("switcherList").addEventListener("click",e=>{
+ const b=e.target.closest("[data-pick]");
+ if(b)switcherPick(b.dataset.pick);
 });
+// Tapping the dim area outside the sheet closes it, the way a sheet is expected to.
+$("switcher").addEventListener("click",e=>{if(e.target===$("switcher"))closeSwitcher()});
 $("teamPicker").addEventListener("input",()=>{renderTeamPickerList();syncEventSelectForPicker()});
 // Select the existing text so typing a number replaces the saved team instead of
 // being appended to it — the recents list stays one tap away underneath.
@@ -1143,18 +1290,10 @@ $("saveTeamBtn").addEventListener("click",async()=>{
  const btn=$("saveTeamBtn");
  setSaveButtonState(btn,"busy");
  // Settings persist before any network work, so a dead connection never loses them.
- const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM), teamChanged=nextTeam!==team;
- // On a team change the old event key belongs to the previous team, so drop it rather
- // than carry it over; loadTeamEvents picks one from the new team's events below.
- const nextEventKey=teamChanged?"":($("eventSelect").value||$("eventKey").value).trim();
- config={...config,team:nextTeam,eventKey:nextEventKey};
- save(K.config,config);team=nextTeam;rememberRecentTeam(nextTeam);
- if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[];forgetAllEtags()}
- setPickerTeam(team);
- const ok=await runTimed(async()=>{
-  await loadTeamEvents({autoPick:teamChanged||!config.eventManual});
-  await refresh(true);
- });
+ const nextTeam=Math.max(1,+pickerTeamValue()||DEFAULT_TEAM);
+ // On a team change the old event key belongs to the previous team, so it is dropped
+ // rather than carried over; loadTeamEvents then picks one from the new team's events.
+ const ok=await applyTeamChange(nextTeam,{eventKey:($("eventSelect").value||$("eventKey").value).trim()});
  setSaveButtonState(btn,ok?"saved":"failed");
 });
 $("saveApiBtn").addEventListener("click",async()=>{
