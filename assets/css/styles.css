@@ -136,6 +136,21 @@ dialog#teamDetail::backdrop{background:rgba(0,0,0,.5)}
 dialog#teamDetail h3{margin:0 0 10px;font-size:17px}
 .tdloc{margin-top:10px;font-size:13px;color:var(--muted)}
 #teamDetailClose{margin-top:12px;width:100%}
+.backbtn{margin:0 0 10px}
+.teamhead .tname.big{font-size:17px;font-weight:700;white-space:normal}
+.teamhead .teamstats{grid-template-columns:repeat(2,1fr);margin-top:10px}
+.tdseason{width:100%;margin-top:12px}
+.yearbar{display:flex;gap:6px;margin:0 2px 10px}
+.yearbtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;color:var(--muted)}
+.yearbtn.active{background:var(--goldbg);border-color:color-mix(in srgb,var(--gold) 45%,var(--line));color:var(--gold)}
+.scard{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px 11px;margin-bottom:8px}
+.sname{font-weight:700;font-size:14px}
+.sdates{font-size:12px;color:var(--muted);margin-top:2px}
+.smetrics{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.smetric{flex:1 1 auto;min-width:72px;border:1px solid var(--line);border-radius:9px;padding:6px 8px;text-align:center}
+.smetric b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+.smetric span{font-size:10px;color:var(--muted)}
+.smetric.good b{color:var(--green)}
 .researchbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--gold) 45%,var(--line));background:var(--goldbg);border-radius:12px;font-size:13px}
 .researchbar[hidden]{display:none}
 .researchbar .rlabel{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--gold)}
