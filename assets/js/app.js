@@ -1,5 +1,6 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1"};
+const RECENT_TEAMS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -24,6 +25,10 @@ let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
 let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=team;
+// Teams you have actually saved, newest first. Kept separate from the team directory:
+// the directory is every team that exists, this is the short list you keep coming back to.
+let recentTeams=(load(K.recentTeams,[])||[]).map(Number).filter(n=>n>0);
+if(!recentTeams.includes(team))recentTeams=[team,...recentTeams].slice(0,RECENT_TEAMS_MAX);
 let teamLocations=load(K.teamLoc,{});
 let allMatches=load(K.allMatches,{});
 let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
@@ -107,10 +112,26 @@ function teamPickerMatches(q){
   .filter(([n,name])=>numeric?String(n).startsWith(s):(name||"").toLowerCase().includes(s)||String(n).startsWith(s))
   .sort((a,b)=>+a[0]-+b[0]).slice(0,25);
 }
+function rememberRecentTeam(n){
+ const t=+n; if(!(t>0))return;
+ recentTeams=[t,...recentTeams.filter(x=>x!==t)].slice(0,RECENT_TEAMS_MAX);
+ save(K.recentTeams,recentTeams);
+}
+// What the picker shows for the team currently chosen. Focusing the field leaves this
+// text in place, so treat it as "nothing typed yet" and offer the recents instead of
+// searching the directory for a string no team name will ever contain.
+function pickerDisplay(n){const name=teamDirectory()[n];return `${n}${name?" · "+name:""}`}
+function pickerIsUntouched(q){
+ const s=(q||"").trim();
+ return !s||s===pickerDisplay(selectedTeam)||s===String(selectedTeam);
+}
+function recentTeamEntries(){
+ const dir=teamDirectory();
+ return recentTeams.slice(0,RECENT_TEAMS_MAX).map(n=>[n,dir[n]]);
+}
 function setPickerTeam(n){
  selectedTeam=+n;
- const name=teamDirectory()[n];
- $("teamPicker").value=`${n}${name?" · "+name:""}`;
+ $("teamPicker").value=pickerDisplay(n);
  $("teamPickerList").hidden=true;
 }
 function pickerTeamValue(){
@@ -135,9 +156,12 @@ function renderLookupList(){
  el.hidden=false;
 }
 function renderTeamPickerList(){
- const list=$("teamPickerList"), items=teamPickerMatches($("teamPicker").value);
+ const list=$("teamPickerList"), q=$("teamPicker").value;
+ // Nothing typed: open on the teams you have used before, rather than a blank dropdown.
+ const recents=pickerIsUntouched(q), items=recents?recentTeamEntries():teamPickerMatches(q);
  if(!items.length){list.hidden=true;list.innerHTML="";return}
- list.innerHTML=items.map(([n,name])=>`<button type="button" data-team="${n}"><b>${n}</b><span>${name||"Team "+n}</span></button>`).join("");
+ const rows=items.map(([n,name])=>`<button type="button" data-team="${n}"${n===selectedTeam?' aria-current="true"':""}><b>${n}</b><span>${esc(name||"Team "+n)}</span></button>`).join("");
+ list.innerHTML=(recents?`<p class="combohint" id="teamPickerHint">Recent teams — or type any team number or name</p>`:"")+rows;
  list.hidden=false;
 }
 function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
@@ -1033,7 +1057,9 @@ $("eventSelect").addEventListener("change",()=>{
  refresh(true);
 });
 $("teamPicker").addEventListener("input",()=>{renderTeamPickerList();syncEventSelectForPicker()});
-$("teamPicker").addEventListener("focus",()=>{loadAllTeams();renderTeamPickerList()});
+// Select the existing text so typing a number replaces the saved team instead of
+// being appended to it — the recents list stays one tap away underneath.
+$("teamPicker").addEventListener("focus",e=>{e.target.select();loadAllTeams();renderTeamPickerList()});
 $("teamPicker").addEventListener("blur",()=>setTimeout(()=>{$("teamPickerList").hidden=true},150));
 $("teamPickerList").addEventListener("pointerdown",e=>{
  const b=e.target.closest("[data-team]");
@@ -1089,7 +1115,7 @@ $("saveTeamBtn").addEventListener("click",async()=>{
  // than carry it over; loadTeamEvents picks one from the new team's events below.
  const nextEventKey=teamChanged?"":($("eventSelect").value||$("eventKey").value).trim();
  config={...config,team:nextTeam,eventKey:nextEventKey};
- save(K.config,config);team=nextTeam;
+ save(K.config,config);team=nextTeam;rememberRecentTeam(nextTeam);
  if(teamChanged){config.eventManual=false;save(K.config,config);localStorage.removeItem(K.matches);localStorage.removeItem(K.teamEvents);matches=nextTeam===DEFAULT_TEAM?FALLBACK:[];teamEvents=[];forgetAllEtags()}
  setPickerTeam(team);
  const ok=await runTimed(async()=>{

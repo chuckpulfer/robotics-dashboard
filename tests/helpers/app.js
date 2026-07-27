@@ -28,6 +28,7 @@ export const KEYS = {
   alliances: "gg_alliances_v1",
   playoffs: "gg_playoffs_v1",
   teamLoc: "gg_team_loc_v1",
+  recentTeams: "gg_recent_teams_v1",
 };
 
 export const DEFAULT_CONFIG = {
