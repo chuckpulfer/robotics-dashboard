@@ -10,7 +10,7 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=27">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=28">
   <title>RoboGear Pass</title>
 </head>
 <body>
@@ -34,6 +34,10 @@
     </div>
   </div>
   <div id="teamList" class="teams-grid"></div>
+</section>
+<section class="page" id="page-team">
+  <button class="iconbtn backbtn" id="teamPageBack" type="button">← Back</button>
+  <div id="teamPage"></div>
 </section>
 <section class="page" id="page-settings">
   <h2 class="section-title">Settings</h2>
@@ -65,6 +69,8 @@
     <label class="combo">Event<input id="eventPicker" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Search events by name or key" enterkeyhint="search"><div class="combolist" id="eventPickerList" hidden></div></label>
     <div class="note" id="eventDirNote"></div>
     <button class="iconbtn" id="refreshEventsBtn" type="button">Update event list</button>
+    <label class="combo">Look up a team<input id="teamLookup" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Team number or name" enterkeyhint="search"><div class="combolist" id="teamLookupList" hidden></div></label>
+    <div class="note">Opens that team's season: every event, with rank, record and playoff result.</div>
   </div></details>
   <details><summary>Add to Home Screen</summary><div class="settings">
     <div class="note">Installs the dashboard like an app: full screen, its own icon, and it opens offline.</div>
@@ -107,5 +113,5 @@
   <button class="iconbtn" id="teamDetailClose" type="button">Close</button>
 </dialog>
 
-<script src="./assets/js/app.js?v=37"></script>
+<script src="./assets/js/app.js?v=38"></script>
 </body></html>

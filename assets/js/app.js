@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1"};
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
 {key:"qm11",q:11,red:[2377,10021,359],blue:[2056,1024,3176]},
@@ -126,6 +126,13 @@ function syncEventSelectForPicker(){
  $("eventSelect").innerHTML=`<option value="">Save to load events for team ${picked}</option>`;
  $("eventSelect").value="";
  $("eventKeyNote").textContent=`Save to load events for team ${picked}.`;
+}
+function renderLookupList(){
+ const el=$("teamLookupList"); if(!el)return;
+ const items=teamPickerMatches($("teamLookup").value);
+ if(!items.length){el.hidden=true;el.innerHTML="";return}
+ el.innerHTML=items.map(([n,name])=>`<button type="button" data-team="${n}"><b>${n}</b><span>${esc(name||"Team "+n)}</span></button>`).join("");
+ el.hidden=false;
 }
 function renderTeamPickerList(){
  const list=$("teamPickerList"), items=teamPickerMatches($("teamPicker").value);
@@ -444,6 +451,16 @@ function teamTableRow(t){
  const s=epa[t]||{}, r=rankings[t]||{};
  return `<div class="team-item ${t===team?"my-team":""}" data-team="${t}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
 }
+// A 304 says "you already have it". If the copy it refers to is gone, the ETag has
+// outlived its data, so drop it and ask for a full response.
+async function apiWithCache(url,etagKey,cached){
+ const data=await api(url,etagKey);
+ if(data)return data;
+ if(cached)return cached;
+ if(!etags[etagKey])return null;
+ forgetEtag(etagKey);
+ return await api(url,etagKey);
+}
 async function fetchTeamLocation(t){
  if(teamLocations[t]||!hasApiKey())return teamLocations[t]||null;
  try{
@@ -457,6 +474,85 @@ function teamLocationText(t){
  if(!loc)return hasApiKey()?"Loading location…":"Add a TBA API key to load location.";
  return [loc.city,loc.state,loc.country&&loc.country!=="USA"?loc.country:null].filter(Boolean).join(", ")||"—";
 }
+let teamSeasons=load(K.teamSeason,{}), teamPage={team:null,year:YEAR}, teamPageReturn="matches";
+const seasonKey=(t,y)=>`${t}:${y}`;
+/**
+ * A team's season: the events they attended plus their status at each.
+ * /statuses carries the qual rank, record, alliance and playoff result in one call, so
+ * this is two requests regardless of how many events the team played.
+ */
+async function fetchTeamSeason(t,year){
+ if(!hasApiKey())return teamSeasons[seasonKey(t,year)]||null;
+ const cached=teamSeasons[seasonKey(t,year)];
+ const base=`https://www.thebluealliance.com/api/v3/team/frc${t}`;
+ const [events,statuses]=await Promise.all([
+  apiWithCache(`${base}/events/${year}/simple`,`tse:${t}:${year}`,cached?.events).catch(()=>null),
+  apiWithCache(`${base}/events/${year}/statuses`,`tss:${t}:${year}`,cached?.statuses).catch(()=>null),
+ ]);
+ const next={
+  updated:Date.now(),
+  events:(events||cached?.events||[]).map(e=>({key:e.key,name:e.name,start_date:e.start_date,end_date:e.end_date})),
+  statuses:statuses||cached?.statuses||{},
+ };
+ next.events.sort((a,b)=>(a.start_date||"").localeCompare(b.start_date||""));
+ teamSeasons[seasonKey(t,year)]=next;save(K.teamSeason,teamSeasons);
+ return next;
+}
+function seasonEventCard(ev,status){
+ const q=status?.qual?.ranking, rec=q?.record;
+ const record=rec?`${rec.wins??0}-${rec.losses??0}-${rec.ties??0}`:null;
+ const dates=ev.end_date&&ev.end_date!==ev.start_date?`${ev.start_date} – ${ev.end_date}`:ev.start_date||"";
+ const bits=[];
+ if(q?.rank)bits.push(`<span class="smetric"><b>${rank(q.rank)}</b><span>Qual rank</span></span>`);
+ if(record)bits.push(`<span class="smetric"><b>${record}</b><span>Record</span></span>`);
+ if(status?.alliance?.name)bits.push(`<span class="smetric"><b>${esc(status.alliance.name)}</b><span>Alliance</span></span>`);
+ const playoff=status?.playoff?.status;
+ if(playoff)bits.push(`<span class="smetric ${playoff==="won"?"good":""}"><b>${playoff==="won"?"Winner":esc(playoff)}</b><span>Playoffs</span></span>`);
+ return `<div class="scard"><div class="sname">${esc(ev.name)}</div><div class="sdates">${esc(dates)}</div>
+ ${bits.length?`<div class="smetrics">${bits.join("")}</div>`:'<div class="sdates">No results posted.</div>'}</div>`;
+}
+function renderTeamPage(){
+ const el=$("teamPage"); if(!el)return;
+ const t=teamPage.team;
+ if(!t){el.innerHTML="";return}
+ const name=teamDirectory()[t]||`Team ${t}`, s=epa[t]||{}, season=teamSeasons[seasonKey(t,teamPage.year)];
+ const years=seasonYears().map(y=>`<button type="button" class="yearbtn ${y===teamPage.year?"active":""}" data-season-year="${y}">${y}</button>`).join("");
+ const body=!hasApiKey()
+  ? '<div class="empty">Add a TBA API key in Settings to look up teams.</div>'
+  : !season
+    ? '<div class="empty">Loading season…</div>'
+    : season.events.length
+      ? season.events.map(ev=>seasonEventCard(ev,season.statuses?.[ev.key])).join("")
+      : `<div class="empty">No ${teamPage.year} events for team ${t}.</div>`;
+ el.innerHTML=`<div class="hero teamhead">
+  <div class="eyebrow">Team</div>
+  <div class="hero-title">${t}</div>
+  <div class="tname big">${esc(name)}</div>
+  <div class="tdloc">${teamLocationText(t)}</div>
+  ${Number.isFinite(+s.total)?`<div class="teamstats"><div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div><div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div></div>`:""}
+ </div>
+ <div class="yearbar">${years}</div>
+ ${body}`;
+}
+async function openTeamSeason(t,year=teamPage.year){
+ if(!t)return;
+ if($("teamDetail")?.open)$("teamDetail").close();
+ const current=document.querySelector(".tab.active");
+ if(current&&current.dataset.page!=="team")teamPageReturn=current.dataset.page;
+ teamPage={team:+t,year};
+ document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));
+ $("page-team").classList.add("active");
+ renderTeamPage();window.scrollTo(0,0);
+ await Promise.all([fetchTeamLocation(t),runTimed(()=>fetchTeamSeason(+t,year))]);
+ if(teamPage.team===+t)renderTeamPage();
+}
+function closeTeamSeason(){
+ teamPage={team:null,year:teamPage.year};
+ document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));
+ document.querySelector(`.tab[data-page="${teamPageReturn}"]`)?.classList.add("active");
+ $("page-"+teamPageReturn)?.classList.add("active");
+ renderTeamPage();
+}
 function teamDetailHtml(t){
  const name=teamDirectory()[t]||"Team "+t, r=rankings[t]||{}, s=epa[t]||{};
  return `<h3>${t} · ${name}${t===team?" ⭐":""}</h3>
@@ -466,7 +562,8 @@ function teamDetailHtml(t){
   <div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div>
   <div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div>
  </div>
- <div class="tdloc">${teamLocationText(t)}</div>`;
+ <div class="tdloc">${teamLocationText(t)}</div>
+ <button type="button" class="iconbtn tdseason" data-team-season="${t}">View ${YEAR} season</button>`;
 }
 function openTeamDetail(t){
  $("teamDetailBody").innerHTML=teamDetailHtml(t);
@@ -958,6 +1055,22 @@ $("refreshEventsBtn").addEventListener("click",async()=>{
  b.disabled=false;b.textContent="Update event list";
 });
 $("researchBanner").addEventListener("click",e=>{if(e.target.closest("[data-exit-research]"))exitResearch()});
+$("teamLookup").addEventListener("input",()=>renderLookupList());
+$("teamLookup").addEventListener("focus",()=>{loadAllTeams();renderLookupList()});
+$("teamLookup").addEventListener("blur",()=>setTimeout(()=>{$("teamLookupList").hidden=true},150));
+$("teamLookupList").addEventListener("pointerdown",e=>{
+ const b=e.target.closest("[data-team]");
+ if(b){e.preventDefault();$("teamLookupList").hidden=true;openTeamSeason(+b.dataset.team)}
+});
+$("teamPageBack").addEventListener("click",closeTeamSeason);
+$("teamPage").addEventListener("click",e=>{
+ const y=e.target.closest("[data-season-year]");
+ if(y)openTeamSeason(teamPage.team,+y.dataset.seasonYear);
+});
+$("teamDetail").addEventListener("click",e=>{
+ const b=e.target.closest("[data-team-season]");
+ if(b)openTeamSeason(+b.dataset.teamSeason);
+});
 $("refreshTeamsBtn").addEventListener("click",async()=>{
  const b=$("refreshTeamsBtn");
  if(!hasApiKey()){updateTeamDirNote();return}
