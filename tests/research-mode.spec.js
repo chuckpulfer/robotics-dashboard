@@ -60,9 +60,14 @@ const start = async (page) => {
   await waitForRefresh(page);
 };
 
-async function enterResearch(page) {
+/** Opens the research panel only if it is closed — clicking an open one shuts it. */
+const openResearchPanel = async (page) => {
   await openSettings(page);
-  await page.click("#researchPanel summary");
+  if (!(await page.locator("#researchPanel").evaluate((d) => d.open))) await page.click("#researchPanel summary");
+};
+
+async function enterResearch(page) {
+  await openResearchPanel(page);
   await page.click("#eventPicker");
   await page.fill("#eventPicker", "Ontario");
   const option = page.locator('#eventPickerList [data-event="2026onta"]');
@@ -141,4 +146,62 @@ test("research mode survives a reload, still clearly flagged", async ({ page }) 
   await page.waitForSelector(".tab");
   await expect(page.locator("#researchBanner")).toBeVisible();
   await expect(page.locator("#researchBanner")).toContainText("Ontario District Champs");
+});
+
+/**
+ * A tap on a suggestion has to both act and show that it acted. These pickers used to
+ * leave the half-typed search text sitting in the box, so nothing on screen confirmed
+ * which event or team the tap had picked — it read as the tap doing nothing at all.
+ */
+test.describe("picking from the research suggestions", () => {
+  test("a real tap on an event enters research and fills the box", async ({ page }) => {
+    await start(page);
+    await openResearchPanel(page);
+    await page.click("#eventPicker");
+    await page.fill("#eventPicker", "Ontario");
+    // A genuine tap, not a synthetic pointerdown: click is the fallback path.
+    await page.locator('#eventPickerList [data-event="2026onta"]').click();
+
+    await expect(page.locator("#researchBanner")).toBeVisible();
+    await expect(page.locator("#eventPicker")).toHaveValue("2026onta · Ontario District Champs");
+    await expect(page.locator("#eventPickerList")).toBeHidden();
+  });
+
+  test("the event box still shows the researched event after a reload", async ({ page }) => {
+    await start(page);
+    await enterResearch(page);
+    await page.reload();
+    await page.waitForSelector(".tab");
+    await openResearchPanel(page);
+    await expect(page.locator("#eventPicker")).toHaveValue("2026onta · Ontario District Champs");
+  });
+
+  test("leaving research clears the event box", async ({ page }) => {
+    await start(page);
+    await enterResearch(page);
+    await page.click("#researchBanner [data-exit-research]");
+    await openSettings(page);
+    await expect(page.locator("#eventPicker")).toHaveValue("");
+  });
+
+  test("reopening the picker lists events instead of going blank", async ({ page }) => {
+    await start(page);
+    await enterResearch(page);
+    await openResearchPanel(page);
+    await page.click("#eventPicker");
+    // The box holds "2026onta · Ontario…", which matches no event name; treating it as
+    // an untouched value is what keeps the list from coming up empty.
+    await expect(page.locator("#eventPickerList [data-event]").first()).toBeVisible();
+  });
+
+  test("a real tap on a team opens its season and fills the box", async ({ page }) => {
+    await start(page);
+    await openResearchPanel(page);
+    await page.click("#teamLookup");
+    await page.fill("#teamLookup", "2056");
+    await page.locator('#teamLookupList [data-team="2056"]').click();
+
+    await expect(page.locator("#page-team")).toBeVisible();
+    await expect(page.locator("#teamLookup")).toHaveValue(/^2056/);
+  });
 });
