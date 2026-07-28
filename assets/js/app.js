@@ -99,29 +99,59 @@ function hasApiKey(){return!!config.tbaKey?.trim()}
 function forgetEtag(key){delete etags[key];save(K.etags,etags)}
 function forgetAllEtags(){etags={};save(K.etags,etags)}
 function teamDirectory(){return {...NAMES,...(allTeamsCache?.teams||{}),...teams}}
+// TBA pages the team lists by team number, 500 per page; 26 pages covers every number
+// issued so far with room to spare.
+const TEAM_PAGES=26, PAGE_CONCURRENCY=5;
+// Firing all 26 pages at once got pages dropped — TBA throttles a burst that size, and a
+// phone's connection does the rest. A dropped page silently loses a whole 500-number
+// band of teams, so the pages are fetched a few at a time, failures are retried once,
+// and the caller is told whether the result is complete. Anything short of complete must
+// not be cached as if it were, or one bad moment freezes a hole in the list forever.
+async function fetchTeamPages(urlFor,onPage){
+ const pending=[...Array(TEAM_PAGES).keys()];
+ const failed=[];
+ const runPage=async p=>{
+  try{
+   const r=await fetch(urlFor(p),{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
+   if(!r.ok)throw Error(`TBA ${r.status}`);
+   onPage(await r.json());
+  }catch{failed.push(p)}
+ };
+ const drain=async queue=>{
+  const next=async()=>{const p=queue.shift();if(p===undefined)return;await runPage(p);await next()};
+  await Promise.all([...Array(Math.min(PAGE_CONCURRENCY,queue.length)).keys()].map(next));
+ };
+ await drain(pending);
+ const retry=failed.splice(0,failed.length);
+ if(retry.length)await drain(retry);
+ return {complete:!failed.length,failed:failed.length};
+}
 async function loadAllTeams(force=false){
  if(!hasApiKey()||allTeamsLoading)return;
- if(!force&&allTeamsCache)return;
+ // A partial copy is retried on the next attempt rather than kept forever.
+ if(!force&&allTeamsCache?.complete)return;
  allTeamsLoading=true;
  const t={}, loc={};
- await Promise.allSettled([...Array(26).keys()].map(async p=>{
-  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
-  if(!r.ok)return;
+ const {complete}=await fetchTeamPages(
+  p=>`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,
   // The simple team model already carries the location, so the All teams tab needs no
   // extra request for it — and the per-team lookups elsewhere get a warm cache.
-  (await r.json()).forEach(x=>{
+  list=>list.forEach(x=>{
    const n=tn(x.key);
    t[n]=x.nickname||x.name;
    if(x.state_prov||x.country)loc[n]={city:x.city,state:x.state_prov,country:x.country};
-  });
- }));
+  })
+ );
  allTeamsLoading=false;
+ // A partial answer still beats an empty tab, so it is kept and merged with whatever was
+ // already held — it is only the "complete" flag that decides whether to try again.
  if(Object.keys(t).length){
-  allTeamsCache={updated:Date.now(),teams:t,loc};save(K.allTeams,allTeamsCache);
+  allTeamsCache={updated:Date.now(),complete,teams:{...(allTeamsCache?.teams||{}),...t},loc:{...(allTeamsCache?.loc||{}),...loc}};
+  save(K.allTeams,allTeamsCache);
   teamLocations={...loc,...teamLocations};save(K.teamLoc,teamLocations);
   if(document.activeElement===$("teamPicker"))renderTeamPickerList();
-  renderAllTeams();
  }
+ renderAllTeams();
  updateTeamDirNote();
 }
 function updateTeamDirNote(){
@@ -133,21 +163,29 @@ function updateTeamDirNote(){
 // team keys, which is a fraction of the payload of the full records.
 async function loadActiveTeams(force=false){
  if(!hasApiKey()||activeTeamsLoading)return;
- if(!force&&activeTeams?.year===YEAR&&activeTeams.teams?.length)return;
+ if(!force&&activeTeams?.year===YEAR&&activeTeams.complete)return;
  activeTeamsLoading=true;
  const keys=[];
- await Promise.allSettled([...Array(26).keys()].map(async p=>{
-  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${YEAR}/${p}/keys`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
-  if(!r.ok)return;
-  (await r.json()).forEach(k=>keys.push(tn(k)));
- }));
+ const {complete}=await fetchTeamPages(
+  p=>`https://www.thebluealliance.com/api/v3/teams/${YEAR}/${p}/keys`,
+  list=>list.forEach(k=>keys.push(tn(k)))
+ );
  activeTeamsLoading=false;
  if(keys.length){
-  activeTeams={year:YEAR,updated:Date.now(),teams:keys};save(K.activeTeams,activeTeams);
+  const merged=activeTeams?.year===YEAR?[...new Set([...activeTeams.teams||[],...keys])]:keys;
+  activeTeams={year:YEAR,updated:Date.now(),complete,teams:merged};save(K.activeTeams,activeTeams);
+  activeTeamSet=null;
  }
  renderAllTeams();
 }
-function isActiveTeam(t){return !!activeTeams?.teams?.includes(+t)}
+// The filter asks this once per team in the directory — about ten thousand times per
+// keystroke — so scanning the array each time made typing crawl. Built once, reset
+// whenever the list is replaced.
+let activeTeamSet=null;
+function isActiveTeam(t){
+ if(!activeTeamSet)activeTeamSet=new Set((activeTeams?.teams||[]).map(Number));
+ return activeTeamSet.has(+t);
+}
 // OPR belongs to an event, so there is no single global figure. This keeps the best one
 // seen for each team along with where it came from, and it fills in as events load.
 function recordTeamPower(map,eventKey){
@@ -995,11 +1033,14 @@ function renderAllTeams(){
   ? `<div class="allteams-header"><div class="stat-label" style="text-align:left">Team</div><div class="stat-label" style="text-align:left">Name</div><div class="stat-label" style="text-align:left">State / Country</div><div class="stat-label" style="text-align:right">OPR</div></div>${shown.map(t=>allTeamRow(t,dir)).join("")}`
   : "";
  const cached=Object.keys(allTeamsCache?.teams||{}).length;
+ const loadingActive=activeOnly&&(activeTeamsLoading||!activeTeams?.teams?.length);
+ const partial=(cached&&allTeamsCache?.complete===false)||(activeOnly&&activeTeams?.complete===false);
  $("allTeamsNote").textContent=
   !hasApiKey()?"Add a TBA API key in Settings to download the full team directory."
   :!cached?(allTeamsLoading?"Downloading the team directory…":"Team directory not downloaded yet. Open Settings and tap Update team list.")
+  :loadingActive?`Loading the ${YEAR} team list…`
   :!all.length?"No teams match this filter."
-  :`Showing ${shown.length} of ${all.length}${activeOnly?` active ${YEAR}`:""} teams. OPR comes from the events you have loaded; teams you have not loaded an event for show —.`;
+  :`Showing ${shown.length} of ${all.length}${activeOnly?` active ${YEAR}`:""} teams.${partial?" Part of the list failed to download — pull down to refresh or reopen this tab to finish it.":""} OPR comes from the events you have loaded; teams you have not loaded an event for show —.`;
  $("allTeamsMore").hidden=shown.length>=all.length;
  requestAnimationFrame(syncStickyOffsets);
 }
