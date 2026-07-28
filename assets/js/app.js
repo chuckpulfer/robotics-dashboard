@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
 const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
@@ -31,6 +31,11 @@ let activeTeams=load(K.activeTeams,null), activeTeamsLoading=false;
 let teamPower=load(K.teamPower,{});
 let allTeamSearch="", activeOnly=false, allTeamsShown=0;
 const ALL_TEAMS_PAGE=200;
+// Recent filters, newest first. Shorter than the team and event histories on purpose:
+// a filter is a throwaway string, and a long list of them is noise rather than a
+// shortcut. They are only recorded once a filter settles, never per keystroke.
+let recentFilters=(load(K.recentFilters,[])||[]).filter(s=>typeof s==="string"&&s.trim());
+const RECENT_FILTERS_MAX=10;
 // Teams you have actually saved, newest first. Kept separate from the team directory:
 // the directory is every team that exists, this is the short list you keep coming back to.
 let recentTeams=(load(K.recentTeams,[])||[]).map(Number).filter(n=>n>0);
@@ -940,6 +945,31 @@ function allTeamsDirectory(){
  const downloaded=allTeamsCache?.teams;
  return downloaded&&Object.keys(downloaded).length?downloaded:{};
 }
+// A filter is remembered when it settles — on blur, on Enter, or when it leads to a
+// team being opened. Recording every keystroke would fill the history with the prefixes
+// of the word actually wanted.
+function rememberFilter(s){
+ const v=(s||"").trim();
+ if(v.length<2)return;
+ recentFilters=[v,...recentFilters.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,RECENT_FILTERS_MAX);
+ save(K.recentFilters,recentFilters);
+}
+function renderFilterHistory(){
+ const el=$("allTeamSearchList"); if(!el)return;
+ // Only offered when the box is empty: with text in it the results below are the answer.
+ if($("allTeamSearch").value.trim()||!recentFilters.length){el.hidden=true;el.innerHTML="";return}
+ el.innerHTML=`<p class="combohint">Recent filters — or type a number, name, state or country</p>`+
+  recentFilters.map(s=>`<button type="button" data-filter="${esc(s)}"><span>${esc(s)}</span></button>`).join("");
+ el.hidden=false;
+}
+function applyFilter(s){
+ allTeamSearch=s;
+ $("allTeamSearch").value=s;
+ $("allTeamSearchList").hidden=true;
+ allTeamsShown=ALL_TEAMS_PAGE;
+ rememberFilter(s);
+ renderAllTeams();
+}
 function allTeamsMatches(){
  const dir=allTeamsDirectory(), s=allTeamSearch.toLowerCase().trim();
  return Object.keys(dir).map(Number).filter(t=>{
@@ -1422,7 +1452,18 @@ $("clearCacheBtn").addEventListener("click",async()=>{
 });
 $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
-$("allTeamSearch").addEventListener("input",e=>{allTeamSearch=e.target.value;allTeamsShown=ALL_TEAMS_PAGE;renderAllTeams()});
+$("allTeamSearch").addEventListener("input",e=>{allTeamSearch=e.target.value;allTeamsShown=ALL_TEAMS_PAGE;renderFilterHistory();renderAllTeams()});
+$("allTeamSearch").addEventListener("focus",e=>{e.target.select();renderFilterHistory()});
+// The delay lets a tap on a suggestion land before the list closes, but the box can be
+// focused again within it, so re-check before hiding rather than hiding unconditionally.
+$("allTeamSearch").addEventListener("blur",e=>{
+ rememberFilter(e.target.value);
+ setTimeout(()=>{if(document.activeElement!==$("allTeamSearch"))$("allTeamSearchList").hidden=true},150);
+});
+// change fires on Enter as well as blur, which is how a filter typed and submitted from
+// the phone keyboard gets remembered without waiting for focus to move.
+$("allTeamSearch").addEventListener("change",e=>rememberFilter(e.target.value));
+onComboPick("allTeamSearchList","data-filter",b=>applyFilter(b.dataset.filter));
 $("activeOnly").addEventListener("change",e=>{
  activeOnly=e.target.checked;allTeamsShown=ALL_TEAMS_PAGE;
  if(activeOnly)loadActiveTeams();
@@ -1433,7 +1474,8 @@ $("allTeamsMore").addEventListener("click",()=>{allTeamsShown+=ALL_TEAMS_PAGE;re
 // result — the same page the Settings lookup opens.
 $("allTeamsList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
- if(row)openTeamSeason(+row.dataset.team);
+ // Opening a team is the clearest sign the filter did its job, so keep it.
+ if(row){rememberFilter(allTeamSearch);openTeamSeason(+row.dataset.team)}
 });
 $("teamList").addEventListener("click",e=>{
  const btn=e.target.closest("[data-sort]");

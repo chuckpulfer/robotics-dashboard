@@ -147,6 +147,9 @@ label.combo{position:relative}
 .allteam-item .team-name,.allteam-item .team-where{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .allteam-item .team-where{font-size:12px;color:var(--muted)}
 .allteam-item .stat{text-align:right;font-variant-numeric:tabular-nums}
+/* A remembered filter is the whole row here, so it gets the normal text colour rather
+   than the muted secondary one the team and event lists use for their names. */
+#allTeamSearchList button span{color:var(--text)}
 #allTeamsNote{padding:10px 8px;font-size:12px;color:var(--muted)}
 #allTeamsMore{display:block;margin:0 8px 14px}
 #allTeamsMore[hidden]{display:none}

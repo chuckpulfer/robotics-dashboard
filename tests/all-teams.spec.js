@@ -170,3 +170,107 @@ test("says what to do when there is no API key", async ({ page }) => {
   await page.click('.tab[data-page="allteams"]');
   await expect(page.locator("#allTeamsNote")).toContainText("Add a TBA API key");
 });
+
+/**
+ * The filter keeps a history, the way the team and event pickers do. It is recorded when
+ * a filter settles — never per keystroke, or the list fills with prefixes of the word
+ * actually wanted.
+ */
+test.describe("filter history", () => {
+  const suggestions = (page) => page.locator("#allTeamSearchList [data-filter]");
+
+  const useFilter = async (page, text) => {
+    await page.fill("#allTeamSearch", text);
+    await page.locator("#allTeamSearch").blur();
+  };
+
+  test("a used filter comes back as a suggestion", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await useFilter(page, "Ontario");
+
+    await page.fill("#allTeamSearch", "");
+    await page.click("#allTeamSearch");
+    await expect(page.locator("#allTeamSearchList")).toBeVisible();
+    await expect(suggestions(page)).toHaveText(["Ontario"]);
+
+    await suggestions(page).first().click();
+    await expect(page.locator("#allTeamSearch")).toHaveValue("Ontario");
+    await expect(rows(page)).toHaveCount(2);
+  });
+
+  test("keeps them newest first, without duplicates", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await useFilter(page, "Ontario");
+    await useFilter(page, "Simbotics");
+    await useFilter(page, "ontario"); // same filter, different case
+
+    await page.fill("#allTeamSearch", "");
+    await page.click("#allTeamSearch");
+    await expect(suggestions(page)).toHaveText(["ontario", "Simbotics"]);
+  });
+
+  test("does not record every keystroke", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    // Typed but never settled: no blur, no Enter, no team opened.
+    await page.type("#allTeamSearch", "Onta");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_recent_filters_v1") || "[]"));
+    expect(stored).toEqual([]);
+  });
+
+  test("a single character is not worth remembering", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await useFilter(page, "O");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_recent_filters_v1") || "[]"));
+    expect(stored).toEqual([]);
+  });
+
+  test("opening a team records the filter that found it", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await page.fill("#allTeamSearch", "Simb");
+    await rows(page).first().click();
+    await expect(page.locator("#page-team")).toBeVisible();
+
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_recent_filters_v1") || "[]"));
+    expect(stored).toEqual(["Simb"]);
+  });
+
+  test("the history is capped at 10", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    for (let i = 0; i < 12; i++) await useFilter(page, `filter${i}`);
+
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_recent_filters_v1") || "[]"));
+    expect(stored.length).toBe(10);
+    expect(stored[0]).toBe("filter11");
+    expect(stored).not.toContain("filter0");
+  });
+
+  test("suggestions only show while the box is empty", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await useFilter(page, "Ontario");
+
+    await page.fill("#allTeamSearch", "");
+    await page.click("#allTeamSearch");
+    await expect(page.locator("#allTeamSearchList")).toBeVisible();
+    await page.fill("#allTeamSearch", "S");
+    await expect(page.locator("#allTeamSearchList")).toBeHidden();
+  });
+
+  test("the history survives a reload", async ({ page }) => {
+    await start(page);
+    await openAll(page);
+    await useFilter(page, "Ontario");
+
+    await page.reload();
+    await page.waitForSelector(".tab");
+    await openAll(page);
+    await page.click("#allTeamSearch");
+    await expect(suggestions(page)).toHaveText(["Ontario"]);
+  });
+});
