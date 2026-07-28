@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
 const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
@@ -25,6 +25,12 @@ let matches=load(K.matches,null);
 if(!matches?.some(m=>m.red.includes(team)||m.blue.includes(team)))matches=team===DEFAULT_TEAM?FALLBACK:[];
 let rankings=load(K.rankings,{}), teams={...NAMES,...load(K.teams,{})}, epa=load(K.epa,{}), etags=load(K.etags,{});
 let allTeamsCache=load(K.allTeams,null), allTeamsLoading=false, selectedTeam=team;
+// The All teams tab. activeTeams is the set that competed this season; teamPower is a
+// catalogue of the best OPR seen for each team, filled in from every event loaded.
+let activeTeams=load(K.activeTeams,null), activeTeamsLoading=false;
+let teamPower=load(K.teamPower,{});
+let allTeamSearch="", activeOnly=false, allTeamsShown=0;
+const ALL_TEAMS_PAGE=200;
 // Teams you have actually saved, newest first. Kept separate from the team directory:
 // the directory is every team that exists, this is the short list you keep coming back to.
 let recentTeams=(load(K.recentTeams,[])||[]).map(Number).filter(n=>n>0);
@@ -92,22 +98,76 @@ async function loadAllTeams(force=false){
  if(!hasApiKey()||allTeamsLoading)return;
  if(!force&&allTeamsCache)return;
  allTeamsLoading=true;
- const t={};
+ const t={}, loc={};
  await Promise.allSettled([...Array(26).keys()].map(async p=>{
   const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${p}/simple`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
   if(!r.ok)return;
-  (await r.json()).forEach(x=>{t[tn(x.key)]=x.nickname||x.name});
+  // The simple team model already carries the location, so the All teams tab needs no
+  // extra request for it — and the per-team lookups elsewhere get a warm cache.
+  (await r.json()).forEach(x=>{
+   const n=tn(x.key);
+   t[n]=x.nickname||x.name;
+   if(x.state_prov||x.country)loc[n]={city:x.city,state:x.state_prov,country:x.country};
+  });
  }));
  allTeamsLoading=false;
  if(Object.keys(t).length){
-  allTeamsCache={updated:Date.now(),teams:t};save(K.allTeams,allTeamsCache);
+  allTeamsCache={updated:Date.now(),teams:t,loc};save(K.allTeams,allTeamsCache);
+  teamLocations={...loc,...teamLocations};save(K.teamLoc,teamLocations);
   if(document.activeElement===$("teamPicker"))renderTeamPickerList();
+  renderAllTeams();
  }
  updateTeamDirNote();
 }
 function updateTeamDirNote(){
  const n=Object.keys(allTeamsCache?.teams||{}).length;
  $("teamDirNote").textContent=n?`${n} teams cached · updated ${new Date(allTeamsCache.updated).toLocaleDateString()}`:hasApiKey()?"Team directory not downloaded yet.":"Add a TBA API key to download the full team directory.";
+}
+// TBA's year-scoped team list is exactly "competed this season", so the Active filter
+// asks it rather than inferring activity from anything else. /keys returns just the
+// team keys, which is a fraction of the payload of the full records.
+async function loadActiveTeams(force=false){
+ if(!hasApiKey()||activeTeamsLoading)return;
+ if(!force&&activeTeams?.year===YEAR&&activeTeams.teams?.length)return;
+ activeTeamsLoading=true;
+ const keys=[];
+ await Promise.allSettled([...Array(26).keys()].map(async p=>{
+  const r=await fetch(`https://www.thebluealliance.com/api/v3/teams/${YEAR}/${p}/keys`,{headers:{"X-TBA-Auth-Key":config.tbaKey},cache:"no-store",signal:timeoutSignal()});
+  if(!r.ok)return;
+  (await r.json()).forEach(k=>keys.push(tn(k)));
+ }));
+ activeTeamsLoading=false;
+ if(keys.length){
+  activeTeams={year:YEAR,updated:Date.now(),teams:keys};save(K.activeTeams,activeTeams);
+ }
+ renderAllTeams();
+}
+function isActiveTeam(t){return !!activeTeams?.teams?.includes(+t)}
+// OPR belongs to an event, so there is no single global figure. This keeps the best one
+// seen for each team along with where it came from, and it fills in as events load.
+function recordTeamPower(map,eventKey){
+ let changed=false;
+ Object.entries(map).forEach(([t,total])=>{
+  if(!Number.isFinite(total))return;
+  const prev=teamPower[t];
+  if(prev&&prev.event===eventKey&&prev.opr===total)return;
+  if(prev&&prev.opr>=total&&prev.event!==eventKey)return;
+  teamPower[t]={opr:total,event:eventKey};changed=true;
+ });
+ if(changed)save(K.teamPower,teamPower);
+}
+function teamOpr(t){
+ const live=epa[t];
+ if(live?.source==="opr"&&Number.isFinite(live.total))return live.total;
+ return Number.isFinite(teamPower[t]?.opr)?teamPower[t].opr:null;
+}
+function teamWhere(t){
+ const l=teamLocations[t]||allTeamsCache?.loc?.[t];
+ if(!l)return "—";
+ // USA is dropped because the state already says it, and some registrations repeat the
+ // country in the state field (city states, and countries with no subdivisions).
+ const country=l.country==="USA"||l.country===l.state?"":l.country;
+ return [l.state,country].filter(Boolean).join(", ")||l.country||"—";
 }
 function teamPickerMatches(q){
  const s=(q||"").toLowerCase().trim();
@@ -873,6 +933,46 @@ function renderTeams(){
  <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button><div class="stat-label">Next</div>
  </div>${list.map(teamTableRow).join("")}`;
 }
+// "All teams" means the downloaded TBA directory, on its own. teamDirectory() folds in
+// NAMES — an offline seed of one event's teams — which would otherwise show up here as
+// a handful of teams pretending to be the directory.
+function allTeamsDirectory(){
+ const downloaded=allTeamsCache?.teams;
+ return downloaded&&Object.keys(downloaded).length?downloaded:{};
+}
+function allTeamsMatches(){
+ const dir=allTeamsDirectory(), s=allTeamSearch.toLowerCase().trim();
+ return Object.keys(dir).map(Number).filter(t=>{
+  if(activeOnly&&!isActiveTeam(t))return false;
+  if(!s)return true;
+  return String(t).startsWith(s)||(dir[t]||"").toLowerCase().includes(s)||teamWhere(t).toLowerCase().includes(s);
+ }).sort((a,b)=>a-b);
+}
+function allTeamRow(t,dir){
+ return `<div class="allteam-item ${t===team?"my-team":""}" data-team="${t}">`+
+  `<div class="team-num">${t}${t===team?" ⭐":""}</div>`+
+  `<div class="team-name">${esc(dir[t]||"Team "+t)}</div>`+
+  `<div class="team-where">${esc(teamWhere(t))}</div>`+
+  // fmt() coerces, and +null is 0, so an unknown OPR has to be caught before it.
+  `<div class="stat">${teamOpr(t)===null?"—":fmt(teamOpr(t))}</div></div>`;
+}
+function renderAllTeams(){
+ const list=$("allTeamsList"); if(!list)return;
+ const dir=allTeamsDirectory(), all=allTeamsMatches();
+ if(!allTeamsShown)allTeamsShown=ALL_TEAMS_PAGE;
+ const shown=all.slice(0,allTeamsShown);
+ list.innerHTML=all.length
+  ? `<div class="allteams-header"><div class="stat-label" style="text-align:left">Team</div><div class="stat-label" style="text-align:left">Name</div><div class="stat-label" style="text-align:left">State / Country</div><div class="stat-label" style="text-align:right">OPR</div></div>${shown.map(t=>allTeamRow(t,dir)).join("")}`
+  : "";
+ const cached=Object.keys(allTeamsCache?.teams||{}).length;
+ $("allTeamsNote").textContent=
+  !hasApiKey()?"Add a TBA API key in Settings to download the full team directory."
+  :!cached?(allTeamsLoading?"Downloading the team directory…":"Team directory not downloaded yet. Open Settings and tap Update team list.")
+  :!all.length?"No teams match this filter."
+  :`Showing ${shown.length} of ${all.length}${activeOnly?` active ${YEAR}`:""} teams. OPR comes from the events you have loaded; teams you have not loaded an event for show —.`;
+ $("allTeamsMore").hidden=shown.length>=all.length;
+ requestAnimationFrame(syncStickyOffsets);
+}
 // FRC double-elimination bracket (2023+): sf sets 1-13, then best-of-3 finals.
 // Feeds: A=alliance seed, W=winner of match n, L=loser of match n.
 const BRACKET={
@@ -1058,7 +1158,8 @@ function renderPlayoffs(){
  }
  el.innerHTML=keyReminder+champHtml+aHtml+bHtml;
 }
-function render(){renderHeader();renderMatches();renderAllMatches();renderTeams();renderPlayoffs()}
+// The full directory is thousands of rows, so it is only rebuilt while its tab is up.
+function render(){renderHeader();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(btn,state){
@@ -1133,6 +1234,9 @@ async function fetchTbaOprs(ids){
  if(!data.oprs)return 0;
  const ranked=Object.entries(data.oprs).map(([k,v])=>({t:tn(k),total:+v})).filter(x=>Number.isFinite(x.total)).sort((a,b)=>b.total-a.total);
  ranked.forEach((x,i)=>{if(ids.includes(x.t))epa[x.t]={total:x.total,rank:i+1,source:"opr"};});
+ // Every event carries OPR for its whole field, not just the teams on screen, so the
+ // All teams catalogue is filled from the full response.
+ recordTeamPower(Object.fromEntries(ranked.map(x=>[x.t,x.total])),activeEventKey());
  return ids.filter(t=>Number.isFinite(epa[t]?.total)).length;
 }
 async function refreshPowerRatings(ids,notes){
@@ -1177,7 +1281,7 @@ async function refresh(force=false){
  $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
  $("statusDetail").innerHTML=`<span class="ok">Updated ${t}</span> · ${notes.join(" · ")}`;
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToNextMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();requestAnimationFrame(syncStickyOffsets)}));
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab,.page").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("page-"+b.dataset.page).classList.add("active");if(b.dataset.page==="matches")scrollToNextMatch();if(b.dataset.page==="allmatches")renderAllMatches();if(b.dataset.page==="playoffs")renderPlayoffs();if(b.dataset.page==="settings")renderCacheDetails();if(b.dataset.page==="allteams"){loadAllTeams();if(activeOnly)loadActiveTeams();renderAllTeams()}requestAnimationFrame(syncStickyOffsets)}));
 $("cachePanel").addEventListener("toggle",()=>{if($("cachePanel").open)renderCacheDetails()});
 $("matchList").addEventListener("click",e=>{
  if(e.target.closest("[data-open-settings]")){openSettings();return}
@@ -1318,6 +1422,19 @@ $("clearCacheBtn").addEventListener("click",async()=>{
 });
 $("clearBtn").addEventListener("click",()=>{Object.values(K).forEach(k=>localStorage.removeItem(k));location.reload()});
 $("teamSearch").addEventListener("input",e=>{teamSearch=e.target.value;renderTeams()});
+$("allTeamSearch").addEventListener("input",e=>{allTeamSearch=e.target.value;allTeamsShown=ALL_TEAMS_PAGE;renderAllTeams()});
+$("activeOnly").addEventListener("change",e=>{
+ activeOnly=e.target.checked;allTeamsShown=ALL_TEAMS_PAGE;
+ if(activeOnly)loadActiveTeams();
+ renderAllTeams();
+});
+$("allTeamsMore").addEventListener("click",()=>{allTeamsShown+=ALL_TEAMS_PAGE;renderAllTeams()});
+// Tapping a row opens that team's season: every event with rank, record and playoff
+// result — the same page the Settings lookup opens.
+$("allTeamsList").addEventListener("click",e=>{
+ const row=e.target.closest("[data-team]");
+ if(row)openTeamSeason(+row.dataset.team);
+});
 $("teamList").addEventListener("click",e=>{
  const btn=e.target.closest("[data-sort]");
  if(btn){teamSort=btn.dataset.sort;renderTeams();return}

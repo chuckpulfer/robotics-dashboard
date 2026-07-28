@@ -62,7 +62,7 @@ test.describe("service worker cache", () => {
 
     await context.setOffline(true);
     await page.reload();
-    await expect(page.locator(".tab")).toHaveCount(5);
+    await expect(page.locator(".tab")).toHaveCount(6);
     await context.setOffline(false);
   });
 

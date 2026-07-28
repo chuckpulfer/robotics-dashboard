@@ -153,5 +153,5 @@ test("the season view is reachable from the team popup", async ({ page }) => {
 test("the season view has no tab of its own", async ({ page }) => {
   await start(page);
   const tabs = await page.$$eval(".tab", (els) => els.map((e) => e.dataset.page));
-  expect(tabs).toEqual(["matches", "allmatches", "playoffs", "teams", "settings"]);
+  expect(tabs).toEqual(["matches", "allmatches", "playoffs", "teams", "allteams", "settings"]);
 });

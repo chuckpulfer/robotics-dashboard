@@ -69,7 +69,7 @@ h1{font-size:20px;margin:0} .sub,.muted{color:var(--muted)} .sub{font-size:13px;
 .team-item{display:grid;grid-template-columns:46px minmax(0,1fr) 40px 40px 44px 52px 74px;gap:6px;padding:8px;align-items:center;border-bottom:1px solid var(--line);font-size:13px;background:var(--bg)}
 .team-item{cursor:pointer} .team-item.my-team{background:var(--goldbg)} .team-num{font-weight:700;font-size:15px} .team-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .stat{text-align:center;font-size:12px;color:var(--muted)} .stat.next{font-size:11px;line-height:1.2}
 .tabs{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(100%,720px);
-  display:grid;grid-template-columns:repeat(5,1fr);background:color-mix(in srgb,var(--panel) 96%,transparent);
+  display:grid;grid-template-columns:repeat(6,1fr);background:color-mix(in srgb,var(--panel) 96%,transparent);
   border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));backdrop-filter:blur(14px);z-index:20}
 .tab{border:0;background:transparent;padding:8px 2px;border-radius:9px;font-size:11px;margin:4px 1px} .tab.active{background:var(--goldbg);color:var(--gold);font-weight:800;border-radius:10px;padding:8px 4px;margin:2px 1px}
 .page{display:none} .page.active{display:block} details{border:1px solid var(--line);background:var(--panel);border-radius:12px;margin-bottom:10px}
@@ -133,6 +133,23 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+/* The full directory is thousands of rows, so the columns are narrower than the event
+   table: number, name, where they are from, and OPR. */
+#page-allteams{padding-bottom:0}
+#page-allteams .teams-controls{gap:8px}
+#page-allteams .teams-controls label.check{font-size:13px;color:var(--text);padding-bottom:2px}
+.allteams-header,.allteam-item{display:grid;grid-template-columns:68px minmax(0,1fr) 84px 50px;gap:6px;padding:8px;align-items:center}
+.allteams-header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;
+  top:calc(var(--header-h,0px) + var(--teams-sticky-h,40px));z-index:9}
+.allteam-item{border-bottom:1px solid var(--line);font-size:13px;background:var(--bg);cursor:pointer}
+.allteam-item.my-team{background:var(--goldbg)}
+.allteam-item .team-num{font-weight:700;font-size:15px;white-space:nowrap}
+.allteam-item .team-name,.allteam-item .team-where{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.allteam-item .team-where{font-size:12px;color:var(--muted)}
+.allteam-item .stat{text-align:right;font-variant-numeric:tabular-nums}
+#allTeamsNote{padding:10px 8px;font-size:12px;color:var(--muted)}
+#allTeamsMore{display:block;margin:0 8px 14px}
+#allTeamsMore[hidden]{display:none}
 /* The two context chips share the row and each truncates on its own, so a long event
    name can never push the team chip off screen on a narrow phone. */
 .context{display:flex;gap:6px;margin-top:8px}

@@ -29,7 +29,7 @@ test("there is no separate Next tab", async ({ page }) => {
   await mockTba(page, DATA);
   await openApp(page, server.baseURL);
   const tabs = await page.$$eval(".tab", (els) => els.map((e) => e.textContent));
-  expect(tabs).toEqual(["Mine", "Quals", "Playoffs", "Teams", "Settings"]);
+  expect(tabs).toEqual(["Mine", "Quals", "Playoffs", "Teams", "All", "Settings"]);
   await expect(page.locator(".tab.active")).toHaveAttribute("data-page", "matches");
 });
 
