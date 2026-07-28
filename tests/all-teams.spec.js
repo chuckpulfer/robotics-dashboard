@@ -22,9 +22,18 @@ const DIRECTORY = [
 // 9999 is absent, so it is the one the Active filter must drop.
 const ACTIVE = ["frc10021", "frc2056", "frc1114", "frc254"];
 
-async function mock(page, { oprs = { frc10021: 42.5, frc2056: 61.25 } } = {}) {
+async function mock(page, { oprs = { frc10021: 42.5, frc2056: 61.25 }, failPages = new Set(), onRequest = null } = {}) {
   await page.route("https://www.thebluealliance.com/**", (route) => {
     const url = route.request().url();
+    if (onRequest) onRequest(url);
+    // Reproduces a page that TBA drops under a burst of parallel requests.
+    const dir = url.match(/\/teams\/(\d+)\/simple/);
+    const yr = url.match(/\/teams\/\d{4}\/(\d+)\/keys/);
+    const page_ = dir ? `dir${dir[1]}` : yr ? `yr${yr[1]}` : null;
+    if (page_ && failPages.has(page_)) {
+      failPages.delete(page_); // fails once, so a retry can succeed
+      return route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+    }
     const send = (b) => route.fulfill({
       status: 200, contentType: "application/json",
       headers: { "Access-Control-Expose-Headers": "ETag" }, body: JSON.stringify(b),
@@ -272,5 +281,106 @@ test.describe("filter history", () => {
     await openAll(page);
     await page.click("#allTeamSearch");
     await expect(suggestions(page)).toHaveText(["Ontario"]);
+  });
+});
+
+/**
+ * TBA pages both team lists by team number. Losing one page silently drops a whole
+ * 500-number band — and team 254 lives on page 0, so a single dropped page was enough
+ * to make a team that is plainly competing look retired.
+ */
+test.describe("a dropped page must not become permanent", () => {
+  test("retries the page that failed, so 254 still arrives", async ({ page }) => {
+    await mock(page, { failPages: new Set(["dir0", "yr0"]) });
+    await openApp(page, server.baseURL);
+    await waitForRefresh(page);
+    await openAll(page);
+
+    await page.check("#activeOnly");
+    await page.fill("#allTeamSearch", "254");
+    await expect(rows(page)).toHaveCount(1);
+    await expect(rows(page).first()).toContainText("The Cheesy Poofs");
+  });
+
+  test("a partial download is not cached as complete", async ({ page }) => {
+    // Fails on both the first attempt and the retry, so the copy really is short.
+    await page.route("https://www.thebluealliance.com/**", (route) => {
+      const url = route.request().url();
+      const send = (b) => route.fulfill({
+        status: 200, contentType: "application/json",
+        headers: { "Access-Control-Expose-Headers": "ETag" }, body: JSON.stringify(b),
+      });
+      if (/\/teams\/0\/simple/.test(url)) return route.fulfill({ status: 503, body: "{}" });
+      if (/\/teams\/1\/simple/.test(url)) return send([DIRECTORY[0]]);
+      if (/\/teams\/\d+\/simple/.test(url)) return send([]);
+      if (/\/teams\/\d+\/keys/.test(url)) return send([]);
+      if (/team\/frc\d+\/events\/\d+\/simple/.test(url)) return send([]);
+      return send([]);
+    });
+    await openApp(page, server.baseURL);
+    await page.click('.tab[data-page="allteams"]');
+    await expect(page.locator("#allTeamsList .allteam-item").first()).toBeVisible();
+
+    const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_all_teams_v2")));
+    expect(cache.complete).toBe(false);
+    await expect(page.locator("#allTeamsNote")).toContainText("Part of the list failed to download");
+  });
+
+  test("a cache left partial is retried on the next visit, not kept forever", async ({ page }) => {
+    const seen = [];
+    await mock(page, { onRequest: (u) => seen.push(u) });
+    // Seed the state a dropped page used to leave behind: teams present, complete false.
+    await openApp(page, server.baseURL, {
+      state: { allTeams: { updated: Date.now(), complete: false, teams: { 10021: "Golden Gears" }, loc: {} } },
+    });
+    await waitForRefresh(page);
+    seen.length = 0;
+    await openAll(page);
+
+    await expect
+      .poll(() => seen.filter((u) => /\/teams\/\d+\/simple/.test(u)).length)
+      .toBeGreaterThan(0);
+    await page.fill("#allTeamSearch", "254");
+    await expect(rows(page)).toHaveCount(1);
+  });
+
+  test("a complete cache is not re-downloaded", async ({ page }) => {
+    const seen = [];
+    await mock(page, { onRequest: (u) => seen.push(u) });
+    await openApp(page, server.baseURL);
+    await waitForRefresh(page);
+    await openAll(page);
+    await expect.poll(async () =>
+      (await page.evaluate(() => JSON.parse(localStorage.getItem("gg_all_teams_v2"))?.complete)) === true).toBe(true);
+
+    seen.length = 0;
+    await page.click('.tab[data-page="matches"]');
+    await page.click('.tab[data-page="allteams"]');
+    await page.waitForTimeout(500);
+    expect(seen.filter((u) => /\/teams\/\d+\/simple/.test(u))).toEqual([]);
+  });
+
+  test("the directory is fetched a few pages at a time, not all at once", async ({ page }) => {
+    let inFlight = 0, peak = 0;
+    await page.route("https://www.thebluealliance.com/**", async (route) => {
+      const url = route.request().url();
+      const isPage = /\/teams\/\d+\/simple/.test(url);
+      if (isPage) { inFlight++; peak = Math.max(peak, inFlight); }
+      const send = (b) => route.fulfill({
+        status: 200, contentType: "application/json",
+        headers: { "Access-Control-Expose-Headers": "ETag" }, body: JSON.stringify(b),
+      });
+      if (isPage) await new Promise((r) => setTimeout(r, 40));
+      try {
+        if (/\/teams\/0\/simple/.test(url)) return await send(DIRECTORY);
+        if (/\/teams\/\d+\/simple/.test(url)) return await send([]);
+        if (/\/teams\/\d+\/keys/.test(url)) return await send([]);
+        return await send([]);
+      } finally { if (isPage) inFlight--; }
+    });
+    await openApp(page, server.baseURL);
+    await page.click('.tab[data-page="allteams"]');
+    await expect(page.locator("#allTeamsList .allteam-item").first()).toBeVisible();
+    expect(peak).toBeLessThanOrEqual(5);
   });
 });
