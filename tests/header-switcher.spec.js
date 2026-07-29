@@ -177,9 +177,10 @@ test("the sheet closes on the backdrop and the Close button", async ({ page }) =
   await expect(page.locator("#switcher")).toBeHidden();
 });
 
-test("the Settings event dropdown still switches events", async ({ page }) => {
+test("the directory arriving late still fills the team search", async ({ page }) => {
   await start(page);
-  await openSettings(page);
-  await page.selectOption("#eventSelect", "2026mifoo");
-  await expect(page.locator("#eventChipValue")).toHaveText("Michigan District Foo");
+  // Opening the chip is what starts the download, so the sheet is up before it lands.
+  await page.click("#teamChip");
+  await page.fill("#switcherSearch", "2056");
+  await expect(page.locator('#switcherList [data-pick="2056"]')).toBeVisible();
 });
