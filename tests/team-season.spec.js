@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { openApp, openSettings, waitForRefresh, tbaMatch, tbaRanking } from "./helpers/app.js";
+import { openApp, waitForRefresh, tbaMatch, tbaRanking } from "./helpers/app.js";
 
 /**
  * The dedicated team season view: every event a team played that year, with rank,
@@ -65,14 +65,13 @@ const start = async (page) => {
   await waitForRefresh(page);
 };
 
+/** The All teams tab is where a team is looked up now: filter, then tap the row. */
 async function lookUpTeam(page, team) {
-  await openSettings(page);
-  await page.click("#researchPanel summary");
-  await page.click("#teamLookup");
-  await page.fill("#teamLookup", String(team));
-  const option = page.locator(`#teamLookupList [data-team="${team}"]`);
-  await expect(option).toBeVisible();
-  await option.dispatchEvent("pointerdown");
+  await page.click('.tab[data-page="allteams"]');
+  await page.fill("#allTeamSearch", String(team));
+  const row = page.locator(`#allTeamsList [data-team="${team}"]`);
+  await expect(row).toBeVisible();
+  await row.click();
   await expect(page.locator("#page-team")).toHaveClass(/active/);
 }
 

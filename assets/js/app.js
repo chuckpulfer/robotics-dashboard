@@ -48,7 +48,9 @@ let teamLocations=load(K.teamLoc,{});
 let allMatches=load(K.allMatches,{});
 let allianceData=load(K.alliances,{}), playoffMatches=load(K.playoffs,{});
 let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", teamSort="event";
-let allEventsCache=load(K.allEvents,{}), allEventsLoading=false, eventSearch="";
+// Per season, not one shared flag: both seasons are now fetched together, and a
+// single flag would let the first in flight turn the second into a no-op.
+let allEventsCache=load(K.allEvents,{}), allEventsLoading={}, eventSearch="";
 // Research mode points the whole app at someone else's event without disturbing yours.
 let research=load(K.research,{active:false,eventKey:"",name:""});
 function researching(){return !!research.active&&!!research.eventKey}
@@ -64,8 +66,7 @@ function applyCtx(){const c=researching()?researchCtx:liveCtx;matches=c.matches;
 function saveLive(key,val){if(!researching())save(key,val)}
 updateTeamDirNote();$("eventKey").value=config.eventKey;$("tbaKey").value=config.tbaKey||"";$("refreshSeconds").value=config.refreshSeconds||DEFAULT_REFRESH;$("statboticsEnabled").checked=!!config.statbotics;
 syncEventUI();
-$("researchYear").innerHTML=seasonYears().map(y=>`<option value="${y}">${y}</option>`).join("");
-updateEventDirNote();renderResearchBanner();if(researching())setPickerEvent(research.eventKey,research.name);
+updateEventDirNote();renderResearchBanner();
 if(config.eventKey&&!recentEvents.some(e=>e.key===config.eventKey))rememberRecentEvent(config.eventKey);
 if(researching())applyCtx();
 
@@ -227,25 +228,15 @@ function rememberRecentTeam(n){
  recentTeams=[t,...recentTeams.filter(x=>x!==t)].slice(0,RECENT_TEAMS_MAX);
  save(K.recentTeams,recentTeams);
 }
-// How a team reads once chosen: "254 · The Cheesy Poofs".
-function pickerDisplay(n){const name=teamDirectory()[n];return `${n}${name?" · "+name:""}`}
 function recentTeamEntries(){
  const dir=teamDirectory();
  return recentTeams.slice(0,RECENT_TEAMS_MAX).map(n=>[n,dir[n]]);
 }
-function renderLookupList(){
- const el=$("teamLookupList"); if(!el)return;
- const items=teamPickerMatches($("teamLookup").value);
- if(!items.length){el.hidden=true;el.innerHTML="";return}
- el.innerHTML=items.map(([n,name])=>`<button type="button" data-team="${n}"><b>${n}</b><span>${esc(name||"Team "+n)}</span></button>`).join("");
- el.hidden=false;
-}
 function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function researchYear(){return +$("researchYear")?.value||YEAR}
-async function loadAllEvents(year=researchYear(),force=false){
- if(!hasApiKey()||allEventsLoading)return;
+async function loadAllEvents(year=YEAR,force=false){
+ if(!hasApiKey()||allEventsLoading[year])return;
  if(!force&&allEventsCache[year]?.events?.length)return;
- allEventsLoading=true;
+ allEventsLoading[year]=true;
  try{
   const data=await api(`https://www.thebluealliance.com/api/v3/events/${year}/simple`,`ev:${year}`);
   if(data){
@@ -254,17 +245,17 @@ async function loadAllEvents(year=researchYear(),force=false){
    save(K.allEvents,allEventsCache);
   }
  }catch{}
- allEventsLoading=false;
+ allEventsLoading[year]=false;
  updateEventDirNote();
- if(document.activeElement===$("eventPicker"))renderEventPickerList();
+ // The sheet is usually still open, showing whatever was cached before this landed.
+ if($("switcher")?.open)renderSwitcher();
 }
 function updateEventDirNote(){
  const el=$("eventDirNote"); if(!el)return;
- const y=researchYear(), n=allEventsCache[y]?.events?.length||0;
- el.textContent=n?`${n} ${y} events cached`:hasApiKey()?`No ${y} events downloaded yet.`:"Add a TBA API key to browse events.";
+ const n=seasonYears().reduce((t,y)=>t+(allEventsCache[y]?.events?.length||0),0);
+ el.textContent=n?`${n} events cached across ${seasonYears().join(" and ")}`:hasApiKey()?"No events downloaded yet.":"Add a TBA API key to browse events.";
 }
-// The Settings picker searches one season at a time; the header switcher has no season
-// control, so it searches every season already downloaded, newest first.
+// Searches every season already downloaded, newest first.
 function allEventMatches(q){
  const s=(q||"").toLowerCase().trim(); if(!s)return [];
  const seen=new Set(), out=[];
@@ -276,18 +267,6 @@ function allEventMatches(q){
    if(out.length>=40)return out;
   }
  return out;
-}
-function eventPickerMatches(q){
- const list=allEventsCache[researchYear()]?.events||[], s=(q||"").toLowerCase().trim();
- if(!s)return list.slice(0,25);
- return list.filter(e=>e.name.toLowerCase().includes(s)||e.key.toLowerCase().includes(s)).slice(0,25);
-}
-function renderEventPickerList(){
- const el=$("eventPickerList"); if(!el)return;
- const items=eventPickerMatches(eventPickerUntouched($("eventPicker").value)?"":$("eventPicker").value);
- if(!items.length){el.hidden=true;el.innerHTML="";return}
- el.innerHTML=items.map(e=>`<button type="button" data-event="${esc(e.key)}" data-name="${esc(e.name)}"><b>${esc(e.key)}</b><span>${esc(e.name)}</span></button>`).join("");
- el.hidden=false;
 }
 function eventDisplay(key,name){return name&&name!==key?`${key} · ${name}`:key}
 // Every place an event name might be known, cheapest first. The header reads this on
@@ -311,16 +290,6 @@ function rememberRecentEvent(key,name){
 }
 // True when the event on screen is not one your team is attending — research mode.
 function awayEvent(key){return !!key&&teamEvents.length>0&&!teamEvents.some(e=>e.key===key)}
-// The picker shows the event you are researching. Like the team picker, that text is
-// not something the search would ever match, so treat it as "nothing typed yet".
-function eventPickerUntouched(q){
- const s=(q||"").trim();
- return !s||(researching()&&(s===eventDisplay(research.eventKey,research.name)||s===research.eventKey));
-}
-function setPickerEvent(key,name){
- $("eventPicker").value=key?eventDisplay(key,name):"";
- $("eventPickerList").hidden=true;
-}
 function renderResearchBanner(){
  const el=$("researchBanner"); if(!el)return;
  el.hidden=!researching();
@@ -336,9 +305,6 @@ async function enterResearch(eventKey,name){
  rememberRecentEvent(research.eventKey,research.name);
  researchCtx={matches:[],rankings:{},epa:{}};
  applyCtx();syncPowerLabels();renderResearchBanner();render();
- // Show the chosen event in the box. Without this it keeps the half-typed search text,
- // so nothing on screen confirms which event the tap actually picked.
- setPickerEvent(research.eventKey,research.name);
  await runTimed(()=>refresh(true));
 }
 // Split from exitResearch so switching straight to one of your own events can drop
@@ -347,7 +313,7 @@ function clearResearch(){
  if(!researching())return false;
  stashCtx();
  research={active:false,eventKey:"",name:""};save(K.research,research);
- applyCtx();syncPowerLabels();renderResearchBanner();setPickerEvent("");
+ applyCtx();syncPowerLabels();renderResearchBanner();
  return true;
 }
 async function exitResearch(){
@@ -428,7 +394,9 @@ function openSwitcher(mode){
  $("switcherNote").textContent=mode==="team"
   ?"Your recent teams are listed first. Search to switch to any other team."
   :"Your team's events switch your own event. Any other event opens in research mode, and your own stays saved.";
- if(mode==="team")loadAllTeams(); else loadAllEvents();
+ // The season control went with the Settings panel, so both seasons are fetched here.
+ // allEventMatches searches every cached year, so last season stays reachable.
+ if(mode==="team")loadAllTeams(); else seasonYears().forEach(y=>loadAllEvents(y));
  renderSwitcher();
  $("switcher").showModal();
 }
@@ -1349,32 +1317,14 @@ function onComboPick(listId,attr,pick){
  list.addEventListener("pointerdown",e=>choose(e,true));
  list.addEventListener("click",e=>choose(e,false));
 }
-$("eventPicker").addEventListener("input",renderEventPickerList);
-$("eventPicker").addEventListener("focus",e=>{e.target.select();loadAllEvents();renderEventPickerList()});
-$("eventPicker").addEventListener("blur",()=>setTimeout(()=>{$("eventPickerList").hidden=true},150));
-onComboPick("eventPickerList","data-event",b=>{
- setPickerEvent(b.dataset.event,b.dataset.name);
- enterResearch(b.dataset.event,b.dataset.name);
-});
-$("researchYear").addEventListener("change",()=>{updateEventDirNote();loadAllEvents();renderEventPickerList()});
 $("refreshEventsBtn").addEventListener("click",async()=>{
  const b=$("refreshEventsBtn");
  if(!hasApiKey()){updateEventDirNote();return}
  b.disabled=true;b.textContent="Downloading…";
- await loadAllEvents(researchYear(),true);
+ await Promise.all(seasonYears().map(y=>loadAllEvents(y,true)));
  b.disabled=false;b.textContent="Update event list";
 });
 $("researchBanner").addEventListener("click",e=>{if(e.target.closest("[data-exit-research]"))exitResearch()});
-$("teamLookup").addEventListener("input",()=>renderLookupList());
-$("teamLookup").addEventListener("focus",e=>{e.target.select();loadAllTeams();renderLookupList()});
-$("teamLookup").addEventListener("blur",()=>setTimeout(()=>{$("teamLookupList").hidden=true},150));
-onComboPick("teamLookupList","data-team",b=>{
- const t=+b.dataset.team;
- // Fill the box before navigating: coming back to Settings, the field then shows the
- // team you looked up rather than the fragment you typed.
- $("teamLookup").value=pickerDisplay(t);
- openTeamSeason(t);
-});
 $("teamPageBack").addEventListener("click",closeTeamSeason);
 $("teamPage").addEventListener("click",e=>{
  const y=e.target.closest("[data-season-year]");

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { mockTba, openApp, openSettings, waitForRefresh, KEYS, tbaMatch, tbaRanking } from "./helpers/app.js";
+import { mockTba, openApp, waitForRefresh, KEYS, tbaMatch, tbaRanking } from "./helpers/app.js";
 
 /**
  * Research mode points the app at someone else's event.
@@ -33,6 +33,12 @@ async function mockEvents(page) {
     const headers = { "Access-Control-Expose-Headers": "ETag" };
     const send = (body) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify(body) });
 
+    // My team's own schedule. Without it nothing counts as "away", so picking another
+    // event would read as changing your own rather than researching someone else's.
+    const mine = url.match(/team\/frc(\d+)\/events\/(\d+)\/simple/);
+    if (mine) return send(mine[1] === String(MY) && mine[2] === "2026"
+      ? [{ key: MY_EVENT, name: "Indiana Robotics Invitational", start_date: "2026-07-10", end_date: "2026-07-11" }]
+      : []);
     if (/\/events\/\d+\/simple/.test(url)) {
       return send([
         { key: MY_EVENT, name: "Indiana Robotics Invitational", start_date: "2026-07-10", end_date: "2026-07-11" },
@@ -60,19 +66,13 @@ const start = async (page) => {
   await waitForRefresh(page);
 };
 
-/** Opens the research panel only if it is closed — clicking an open one shuts it. */
-const openResearchPanel = async (page) => {
-  await openSettings(page);
-  if (!(await page.locator("#researchPanel").evaluate((d) => d.open))) await page.click("#researchPanel summary");
-};
-
+/** Research mode is entered from the header event chip: pick an event your team is not at. */
 async function enterResearch(page) {
-  await openResearchPanel(page);
-  await page.click("#eventPicker");
-  await page.fill("#eventPicker", "Ontario");
-  const option = page.locator('#eventPickerList [data-event="2026onta"]');
+  await page.click("#eventChip");
+  await page.fill("#switcherSearch", "Ontario");
+  const option = page.locator(`#switcherList [data-pick="${OTHER}"]`);
   await expect(option).toBeVisible();
-  await option.dispatchEvent("pointerdown");
+  await option.click();
   await expect(page.locator("#researchBanner")).toBeVisible();
   await waitForRefresh(page);
 }
@@ -146,62 +146,4 @@ test("research mode survives a reload, still clearly flagged", async ({ page }) 
   await page.waitForSelector(".tab");
   await expect(page.locator("#researchBanner")).toBeVisible();
   await expect(page.locator("#researchBanner")).toContainText("Ontario District Champs");
-});
-
-/**
- * A tap on a suggestion has to both act and show that it acted. These pickers used to
- * leave the half-typed search text sitting in the box, so nothing on screen confirmed
- * which event or team the tap had picked — it read as the tap doing nothing at all.
- */
-test.describe("picking from the research suggestions", () => {
-  test("a real tap on an event enters research and fills the box", async ({ page }) => {
-    await start(page);
-    await openResearchPanel(page);
-    await page.click("#eventPicker");
-    await page.fill("#eventPicker", "Ontario");
-    // A genuine tap, not a synthetic pointerdown: click is the fallback path.
-    await page.locator('#eventPickerList [data-event="2026onta"]').click();
-
-    await expect(page.locator("#researchBanner")).toBeVisible();
-    await expect(page.locator("#eventPicker")).toHaveValue("2026onta · Ontario District Champs");
-    await expect(page.locator("#eventPickerList")).toBeHidden();
-  });
-
-  test("the event box still shows the researched event after a reload", async ({ page }) => {
-    await start(page);
-    await enterResearch(page);
-    await page.reload();
-    await page.waitForSelector(".tab");
-    await openResearchPanel(page);
-    await expect(page.locator("#eventPicker")).toHaveValue("2026onta · Ontario District Champs");
-  });
-
-  test("leaving research clears the event box", async ({ page }) => {
-    await start(page);
-    await enterResearch(page);
-    await page.click("#researchBanner [data-exit-research]");
-    await openSettings(page);
-    await expect(page.locator("#eventPicker")).toHaveValue("");
-  });
-
-  test("reopening the picker lists events instead of going blank", async ({ page }) => {
-    await start(page);
-    await enterResearch(page);
-    await openResearchPanel(page);
-    await page.click("#eventPicker");
-    // The box holds "2026onta · Ontario…", which matches no event name; treating it as
-    // an untouched value is what keeps the list from coming up empty.
-    await expect(page.locator("#eventPickerList [data-event]").first()).toBeVisible();
-  });
-
-  test("a real tap on a team opens its season and fills the box", async ({ page }) => {
-    await start(page);
-    await openResearchPanel(page);
-    await page.click("#teamLookup");
-    await page.fill("#teamLookup", "2056");
-    await page.locator('#teamLookupList [data-team="2056"]').click();
-
-    await expect(page.locator("#page-team")).toBeVisible();
-    await expect(page.locator("#teamLookup")).toHaveValue(/^2056/);
-  });
 });
