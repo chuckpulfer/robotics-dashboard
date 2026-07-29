@@ -1,87 +1,88 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { mockTba, openApp, openSettings, KEYS } from "./helpers/app.js";
+import { mockTba, openApp, switchTeam, KEYS } from "./helpers/app.js";
 
 /**
- * The team picker doubles as a recents list: tapping it with nothing typed offers the
- * teams you have saved before, while typing still searches the whole directory.
+ * The team chip doubles as a recents list: open it with nothing typed and the teams you
+ * have used before are one tap away, while typing searches the whole directory.
  */
+
+const DIRECTORY = [
+  { key: "frc10021", team_number: 10021, nickname: "Golden Gears" },
+  { key: "frc2056", team_number: 2056, nickname: "OP Robotics" },
+  { key: "frc1024", team_number: 1024, nickname: "Kil-A-Bytes" },
+  { key: "frc1114", team_number: 1114, nickname: "Simbotics" },
+];
 
 let server;
 test.beforeAll(async () => { server = await startStaticServer(); });
 test.afterAll(async () => { await server.close(); });
 test.use({ serviceWorkers: "block" });
 
-const rows = (page) => page.locator("#teamPickerList button[data-team]");
-const recents = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "[]"), KEYS.recentTeams);
+const rows = (page) => page.locator("#switcherList [data-pick]");
+const stored = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "[]"), KEYS.recentTeams);
 
-const saveTeam = async (page, number) => {
-  await page.fill("#teamPicker", String(number));
-  await page.click("#saveTeamBtn");
-  await expect(page.locator("#saveTeamBtn")).toHaveText(/Saved!|refresh failed/, { timeout: 40_000 });
-  await page.waitForTimeout(2000); // the "Saved!" label reverts before the next save
+const openTeamChip = async (page) => {
+  await page.click("#teamChip");
+  await expect(page.locator("#switcher")).toBeVisible();
 };
 
 test.beforeEach(async ({ page }) => {
-  await mockTba(page, {});
+  await mockTba(page, { directory: DIRECTORY });
   await openApp(page, server.baseURL);
-  await openSettings(page);
 });
 
-test("opens on the recently saved teams, newest first", async ({ page }) => {
-  await saveTeam(page, 2056);
-  await saveTeam(page, 1024);
+test("opens on the recently used teams, newest first", async ({ page }) => {
+  await switchTeam(page, 2056);
+  await switchTeam(page, 1024);
 
-  await page.click("#teamPicker");
-  await expect(page.locator("#teamPickerList")).toBeVisible();
+  await openTeamChip(page);
+  await expect(page.locator('#switcherList [data-group="recent"] .sheetgroup')).toHaveText("Recent teams");
   // 10021 was the team in place at load, so it is remembered too.
   await expect(rows(page)).toHaveText([/1024/, /2056/, /10021/]);
 });
 
-test("says you can type a number or name instead", async ({ page }) => {
-  await page.click("#teamPicker");
-  await expect(page.locator("#teamPickerHint")).toHaveText(/type any team number or name/i);
-  await expect(page.locator("#teamPicker")).toHaveAttribute("placeholder", /type a number or name/i);
+test("says you can type a team instead", async ({ page }) => {
+  await openTeamChip(page);
+  await expect(page.locator("#switcherNote")).toContainText(/search to switch to any other team/i);
+  await expect(page.locator("#switcherSearch")).toHaveAttribute("placeholder", /search any team/i);
 });
 
 test("typing searches the directory rather than the recents", async ({ page }) => {
-  await saveTeam(page, 2056);
+  await switchTeam(page, 2056);
+  await openTeamChip(page);
 
-  await page.fill("#teamPicker", "17");
-  await expect(rows(page)).toHaveText([/1706/, /1720/, /1732/, /1741/, /1768/, /1792/]);
+  await page.fill("#switcherSearch", "1114");
+  await expect(page.locator('#switcherList [data-group="search"]')).toBeVisible();
+  await expect(rows(page)).toHaveText([/1114/]);
 });
 
-test("picking a recent team fills the box and saves", async ({ page }) => {
-  await saveTeam(page, 2056);
-  await saveTeam(page, 1024);
+test("picking a recent team switches to it", async ({ page }) => {
+  await switchTeam(page, 2056);
+  await switchTeam(page, 1024);
 
-  await page.click("#teamPicker");
+  await openTeamChip(page);
   await rows(page).filter({ hasText: "2056" }).click();
-  await expect(page.locator("#teamPicker")).toHaveValue(/^2056/);
-
-  await page.click("#saveTeamBtn");
-  await expect(page.locator("#saveTeamBtn")).toHaveText(/Saved!|refresh failed/, { timeout: 40_000 });
-  expect((await recents(page))[0]).toBe(2056);
+  await expect(page.locator("#teamChipValue")).toHaveText(/^2056/);
+  expect((await stored(page))[0]).toBe(2056);
 });
 
 test("keeps at most 20 teams, dropping the oldest", async ({ page }) => {
   const seeded = Array.from({ length: 20 }, (_, i) => 3000 + i);
   await openApp(page, server.baseURL, { state: { recentTeams: seeded } });
-  await openSettings(page);
-  await saveTeam(page, 2056);
+  await switchTeam(page, 2056);
 
-  const list = await recents(page);
+  const list = await stored(page);
   expect(list.length).toBe(20);
   expect(list[0]).toBe(2056);
   expect(list).not.toContain(3019);
 });
 
 test("recents survive a reload", async ({ page }) => {
-  await saveTeam(page, 2056);
+  await switchTeam(page, 2056);
   await page.reload();
   await page.waitForSelector(".tab");
-  await openSettings(page);
 
-  await page.click("#teamPicker");
+  await openTeamChip(page);
   await expect(rows(page).first()).toHaveText(/2056/);
 });

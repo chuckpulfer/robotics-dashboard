@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { openApp, openSettings, waitForRefresh, KEYS, tbaMatch, tbaRanking } from "./helpers/app.js";
+import { openApp, waitForRefresh, KEYS, tbaMatch, tbaRanking } from "./helpers/app.js";
 
 /**
  * The header carries the current team and event, and both chips open one switcher sheet.
@@ -177,9 +177,56 @@ test("the sheet closes on the backdrop and the Close button", async ({ page }) =
   await expect(page.locator("#switcher")).toBeHidden();
 });
 
-test("the Settings event dropdown still switches events", async ({ page }) => {
+test("the directory arriving late still fills the team search", async ({ page }) => {
   await start(page);
-  await openSettings(page);
-  await page.selectOption("#eventSelect", "2026mifoo");
-  await expect(page.locator("#eventChipValue")).toHaveText("Michigan District Foo");
+  // Opening the chip is what starts the download, so the sheet is up before it lands.
+  await page.click("#teamChip");
+  await page.fill("#switcherSearch", "2056");
+  await expect(page.locator('#switcherList [data-pick="2056"]')).toBeVisible();
+});
+
+/**
+ * The Settings research panel carried a Season dropdown, which scoped which season's
+ * events were downloaded. It went with the panel, so both seasons are fetched when the
+ * event chip opens — otherwise last season's events become unreachable.
+ */
+test("the event search reaches last season too", async ({ page }) => {
+  await start(page);
+  const years = [];
+  // Registered after the base mock so it takes precedence, and falls back for the rest.
+  await page.route("https://www.thebluealliance.com/**", async (route) => {
+    const url = route.request().url();
+    const y = url.match(/\/events\/(\d+)\/simple/);
+    if (y) {
+      years.push(y[1]);
+      return route.fulfill({
+        status: 200, contentType: "application/json",
+        headers: { "Access-Control-Expose-Headers": "ETag" },
+        body: JSON.stringify(y[1] === "2025"
+          ? [{ key: "2025onta", name: "Ontario 2025", start_date: "2025-04-01", end_date: "2025-04-03" }]
+          : []),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.click("#eventChip");
+  await expect.poll(() => years.sort()).toEqual(["2025", "2026"]);
+
+  await page.fill("#switcherSearch", "Ontario 2025");
+  await expect(page.locator('#switcherList [data-pick="2025onta"]')).toBeVisible();
+});
+
+test("Settings no longer duplicates the header", async ({ page }) => {
+  await start(page);
+  await page.click('.tab[data-page="settings"]');
+  const summaries = await page.$$eval("#page-settings details summary", (els) => els.map((e) => e.textContent));
+  expect(summaries).not.toContain("Research another event");
+  // Its event picker and team lookup are the event chip and the All teams tab now.
+  for (const id of ["eventPicker", "teamLookup", "researchYear"]) {
+    await expect(page.locator(`#${id}`)).toHaveCount(0);
+  }
+  // The manual list refreshes it also held are kept.
+  await expect(page.locator("#refreshEventsBtn")).toBeVisible();
+  await expect(page.locator("#refreshTeamsBtn")).toBeVisible();
 });

@@ -3,8 +3,9 @@ import { startStaticServer } from "./helpers/server.js";
 import { mockTba, openApp, openSettings, readConfig } from "./helpers/app.js";
 
 /**
- * Team/event and API settings save independently. They share one config object, so
- * the risk is one section's Save overwriting fields owned by the other.
+ * Team and event are chosen from the header chips; Settings keeps only the API key and
+ * the data controls. The risk here is a Settings save clobbering the team or event that
+ * the header owns, since both write the same config object.
  */
 
 let server;
@@ -26,11 +27,33 @@ test.beforeEach(async ({ page }) => {
   await openSettings(page);
 });
 
-test("splits into two sections with their own save buttons", async ({ page }) => {
+test("no longer duplicates the header's team and event pickers", async ({ page }) => {
   const summaries = await page.$$eval("#page-settings details summary", (els) => els.map((e) => e.textContent));
-  expect(summaries.slice(0, 2)).toEqual(["Team and event", "API and data"]);
-  await expect(page.locator("#saveTeamBtn")).toBeVisible();
+  expect(summaries[0]).toBe("API and data");
+  expect(summaries).not.toContain("Team and event");
   await expect(page.locator("#saveApiBtn")).toBeVisible();
+  // The controls the header replaced are gone, not merely hidden.
+  for (const id of ["teamPicker", "eventSelect", "saveTeamBtn"]) {
+    await expect(page.locator(`#${id}`)).toHaveCount(0);
+  }
+  await expect(page.locator("#teamChip")).toBeVisible();
+  await expect(page.locator("#eventChip")).toBeVisible();
+});
+
+test("keeps the team directory download, which the All teams tab points at", async ({ page }) => {
+  await expect(page.locator("#refreshTeamsBtn")).toBeVisible();
+  await page.click("#refreshTeamsBtn");
+  await expect(page.locator("#teamDirNote")).not.toHaveText("");
+});
+
+test("offers a manual event key only when there is no API key", async ({ page }) => {
+  // With a key, the header chip searches the downloaded event list instead.
+  await expect(page.locator("#eventKeyWrap")).toBeHidden();
+
+  await page.fill("#tbaKey", "");
+  await saveAndSettle(page, "saveApiBtn");
+  await expect(page.locator("#eventKeyWrap")).toBeVisible();
+  await expect(page.locator("#eventKeyHelp")).toContainText("No API key");
 });
 
 test("the API section saves its own fields", async ({ page }) => {
@@ -43,37 +66,16 @@ test("the API section saves its own fields", async ({ page }) => {
   expect(cfg.tbaKey).toBe("my-secret-key");
   expect(cfg.refreshSeconds).toBe(90);
   expect(cfg.statbotics).toBe(true);
-  await expect(page.locator("#saveTeamBtn")).toHaveText("Save and refresh");
 });
 
-test("saving the team does not clobber the API settings", async ({ page }) => {
-  await page.fill("#tbaKey", "my-secret-key");
-  await page.fill("#refreshSeconds", "90");
-  await page.check("#statboticsEnabled");
-  await saveAndSettle(page, "saveApiBtn");
-  await settleLabel(page);
-
-  await page.fill("#teamPicker", "2056");
-  await saveAndSettle(page, "saveTeamBtn");
-
-  const cfg = await readConfig(page);
-  expect(cfg.team).toBe(2056);
-  expect(cfg.tbaKey).toBe("my-secret-key");
-  expect(cfg.refreshSeconds).toBe(90);
-  expect(cfg.statbotics).toBe(true);
-});
-
-test("saving the API section does not clobber the team or event", async ({ page }) => {
-  await page.fill("#teamPicker", "2056");
-  await saveAndSettle(page, "saveTeamBtn");
-  await settleLabel(page);
+test("an API save leaves the team and event alone", async ({ page }) => {
   const before = await readConfig(page);
 
   await page.fill("#refreshSeconds", "120");
   await saveAndSettle(page, "saveApiBtn");
 
   const cfg = await readConfig(page);
-  expect(cfg.team).toBe(2056);
+  expect(cfg.team).toBe(before.team);
   expect(cfg.eventKey).toBe(before.eventKey);
   expect(cfg.refreshSeconds).toBe(120);
 });

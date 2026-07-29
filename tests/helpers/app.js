@@ -23,7 +23,12 @@ export const KEYS = {
   epa: "gg_epa_v1",
   etags: "gg_etags_v1",
   teamEvents: "gg_team_events_v2",
-  allTeams: "gg_all_teams_v1",
+  allTeams: "gg_all_teams_v2",
+  activeTeams: "gg_active_teams_v1",
+  teamPower: "gg_team_power_v1",
+  recentEvents: "gg_recent_events_v1",
+  recentFilters: "gg_recent_filters_v1",
+  research: "gg_research_v1",
   allMatches: "gg_all_matches_v1",
   alliances: "gg_alliances_v1",
   playoffs: "gg_playoffs_v1",
@@ -67,6 +72,7 @@ export async function mockTba(page, data = {}, { hang = false, useEtags = false 
     matches = [],      // raw TBA match objects
     alliances = [],
     eventTeams = [],
+    directory = [],    // [{ key, nickname, ... }] served as the full TBA team directory
     oprs = null,
     teamSimple = {},   // { [teamNumber]: { city, state_prov, country } }
   } = data;
@@ -101,6 +107,12 @@ export async function mockTba(page, data = {}, { hang = false, useEtags = false 
     if (url.includes("/alliances")) return json(route, alliances);
     if (url.includes("/oprs")) return oprs ? json(route, { oprs }) : json(route, {});
     if (url.includes("/teams/simple")) return json(route, eventTeams);
+    // The paged directory and the season-scoped team list. Page 0 carries everything
+    // the specs need; the rest answer empty, as the real API does past the last team.
+    if (/\/teams\/\d{4}\/(\d+)\/keys/.test(url))
+      return json(route, RegExp.$1 === "0" ? directory.map((t) => t.key) : []);
+    if (/\/teams\/(\d+)\/simple/.test(url))
+      return json(route, RegExp.$1 === "0" ? directory : []);
 
     return json(route, []);
   });
@@ -208,3 +220,45 @@ export const tbaAlliance = (picks, status = "playing", record = { wins: 2, losse
   picks: picks.map((t) => `frc${t}`),
   status: { status, record },
 });
+
+/**
+ * Switches team through the header chip — the only way to do it since the Settings
+ * section was removed. The team must be findable: either in the mocked directory, in
+ * the seeded recents, or one of the app's built-in names.
+ */
+export async function switchTeam(page, team) {
+  await page.click("#teamChip");
+  await page.fill("#switcherSearch", String(team));
+  const row = page.locator(`#switcherList [data-pick="${team}"]`);
+  // The directory downloads when the chip opens, so give it a moment to arrive before
+  // concluding the team is not in it and falling back to the recents list.
+  await row.waitFor({ state: "visible", timeout: 5000 }).catch(async () => {
+    await page.fill("#switcherSearch", "");
+  });
+  await row.click();
+  await page.waitForFunction(
+    (t) => document.getElementById("teamChipValue").textContent.startsWith(String(t)),
+    team, { timeout: 40_000 });
+  await page.waitForTimeout(400);
+}
+
+/** Switches event through the header chip. */
+export async function switchEvent(page, key) {
+  await page.click("#eventChip");
+  await page.fill("#switcherSearch", key);
+  await page.locator(`#switcherList [data-pick="${key}"]`).click();
+  await page.waitForTimeout(400);
+}
+
+/**
+ * The event keys the header switcher lists as *this team's* events. Deliberately scoped
+ * to that group: the sheet also offers recently visited events, which belong to whatever
+ * team you were on at the time.
+ */
+export async function offeredEvents(page) {
+  await page.click("#eventChip");
+  const keys = await page.locator('#switcherList [data-group="mine"] [data-pick]').evaluateAll((els) =>
+    els.map((e) => e.dataset.pick));
+  await page.click("#switcherClose");
+  return keys;
+}
