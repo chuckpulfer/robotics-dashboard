@@ -137,6 +137,16 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+.segmented{display:flex;flex:0 0 auto;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel)}
+.seg{border:0;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:6px 14px}
+.seg.active{background:var(--goldbg);color:var(--gold)}
+.allevent-item{display:grid;grid-template-columns:78px minmax(0,1fr) 76px;gap:6px;padding:8px;align-items:center;
+  border-bottom:1px solid var(--line);font-size:13px;background:var(--bg);cursor:pointer}
+.allevent-item.current{background:var(--goldbg)}
+.allevent-item .ev-key{font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+.allevent-item .ev-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.allevent-item .ev-when{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.allevent-item .ev-live{color:var(--gold);font-weight:700}
 /* The full directory is thousands of rows, so the columns are narrower than the event
    table: number, name, where they are from, and OPR. */
 #page-allteams{padding-bottom:0}

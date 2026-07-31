@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { startStaticServer } from "./helpers/server.js";
-import { openApp, waitForRefresh, tbaMatch, tbaRanking } from "./helpers/app.js";
+import { mockTba, openApp, waitForRefresh, KEYS, tbaMatch, tbaRanking } from "./helpers/app.js";
 
 /**
  * The All teams tab lists the whole TBA directory: number, name, where they are from,
@@ -21,6 +21,15 @@ const DIRECTORY = [
 ];
 // 9999 is absent, so it is the one the Active filter must drop.
 const ACTIVE = ["frc10021", "frc2056", "frc1114", "frc254"];
+
+// An offseason event with no teams yet is exactly the case that was invisible.
+const EVENTS_2026 = [
+  { key: MY_EVENT, name: "Indiana Robotics Invitational", start_date: "2026-07-10", end_date: "2026-07-11" },
+  { key: "2026wvrox", name: "WVROX", start_date: "2026-08-15", end_date: "2026-08-16" },
+];
+const EVENTS_2025 = [
+  { key: "2025onta", name: "Ontario District Champs", start_date: "2025-04-01", end_date: "2025-04-03" },
+];
 
 async function mock(page, { oprs = { frc10021: 42.5, frc2056: 61.25 }, failPages = new Set(), onRequest = null } = {}) {
   await page.route("https://www.thebluealliance.com/**", (route) => {
@@ -46,6 +55,8 @@ async function mock(page, { oprs = { frc10021: 42.5, frc2056: 61.25 }, failPages
     if (/team\/frc\d+\/events\/2026\/simple/.test(url))
       return send([{ key: MY_EVENT, name: "Indiana Robotics Invitational", start_date: "2026-07-10", end_date: "2026-07-11" }]);
     if (/team\/frc\d+\/events\/\d+\/simple/.test(url)) return send([]);
+    if (/\/events\/(\d+)\/simple/.test(url))
+      return send(RegExp.$1 === "2026" ? EVENTS_2026 : EVENTS_2025);
     if (url.includes("/oprs")) return send({ oprs });
     if (url.includes("/rankings")) return send({ rankings: [tbaRanking(MY, 3)] });
     if (url.includes("/matches")) return send([tbaMatch({ num: 6, red: [8085, 3641, 469], blue: [MY, 2056, 2767], played: true })]);
@@ -60,9 +71,14 @@ test.beforeAll(async () => { server = await startStaticServer(); });
 test.afterAll(async () => { await server.close(); });
 test.use({ serviceWorkers: "block" });
 
-const openAll = async (page) => {
+/**
+ * Opens the tab. Active-this-season now defaults to on, so specs about the directory as
+ * a whole turn it off explicitly rather than depending on the default either way.
+ */
+const openAll = async (page, { active = false } = {}) => {
   await page.click('.tab[data-page="allteams"]');
   await expect(page.locator("#page-allteams")).toBeVisible();
+  if ((await page.isChecked("#activeOnly")) !== active) await page.setChecked("#activeOnly", active);
   // The directory downloads on first open of the tab.
   await expect(page.locator("#allTeamsList .allteam-item").first()).toBeVisible();
 };
@@ -112,6 +128,23 @@ test("the filter matches number, name and location", async ({ page }) => {
   await page.fill("#allTeamSearch", "100");
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toContainText("10021");
+});
+
+test("active this season is on by default", async ({ page }) => {
+  await start(page);
+  await page.click('.tab[data-page="allteams"]');
+  await expect(page.locator("#activeOnly")).toBeChecked();
+  await expect(rows(page).filter({ hasText: "Retired Robotics" })).toHaveCount(0);
+  await expect(page.locator("#activeOnlyLabel")).toHaveText("Active this season");
+});
+
+test("the choice is remembered across a reload", async ({ page }) => {
+  await start(page);
+  await openAll(page, { active: false });
+  await page.reload();
+  await page.waitForSelector(".tab");
+  await page.click('.tab[data-page="allteams"]');
+  await expect(page.locator("#activeOnly")).not.toBeChecked();
 });
 
 test("the active checkbox drops teams that are not competing this season", async ({ page }) => {
@@ -319,6 +352,7 @@ test.describe("a dropped page must not become permanent", () => {
     });
     await openApp(page, server.baseURL);
     await page.click('.tab[data-page="allteams"]');
+    await page.setChecked("#activeOnly", false);
     await expect(page.locator("#allTeamsList .allteam-item").first()).toBeVisible();
 
     const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("gg_all_teams_v2")));
@@ -380,7 +414,120 @@ test.describe("a dropped page must not become permanent", () => {
     });
     await openApp(page, server.baseURL);
     await page.click('.tab[data-page="allteams"]');
+    await page.setChecked("#activeOnly", false);
     await expect(page.locator("#allTeamsList .allteam-item").first()).toBeVisible();
     expect(peak).toBeLessThanOrEqual(5);
+  });
+});
+
+
+/**
+ * The tab shows either all teams or all events. An event with no teams registered yet is
+ * still a real event, so it has to appear — the reason it did not was a cached event
+ * list that was downloaded once and then kept forever.
+ */
+test.describe("events mode", () => {
+  const eventRows = (page) => page.locator("#allTeamsList .allevent-item[data-event]");
+
+  const openEvents = async (page) => {
+    await page.click('.tab[data-page="allteams"]');
+    await page.click("#segEvents");
+    await expect(eventRows(page).first()).toBeVisible();
+  };
+
+  test("switches between teams and events", async ({ page }) => {
+    await start(page);
+    await page.click('.tab[data-page="allteams"]');
+    await expect(page.locator("#allTitle")).toHaveText("All teams");
+
+    await page.click("#segEvents");
+    await expect(page.locator("#allTitle")).toHaveText("All events");
+    await expect(page.locator("#activeOnlyLabel")).toHaveText("2026 events only");
+    await expect(page.locator("#allTeamSearch")).toHaveAttribute("placeholder", /event name or key/i);
+    await expect(rows(page)).toHaveCount(0); // no team rows in events mode
+
+    await page.click("#segTeams");
+    await expect(page.locator("#allTitle")).toHaveText("All teams");
+  });
+
+  test("lists an event that has no teams yet", async ({ page }) => {
+    await start(page);
+    await openEvents(page);
+    await expect(eventRows(page).filter({ hasText: "WVROX" })).toHaveCount(1);
+
+    await page.fill("#allTeamSearch", "wvrox");
+    await expect(eventRows(page)).toHaveCount(1);
+    await expect(eventRows(page).first()).toContainText("2026wvrox");
+  });
+
+  test("the season checkbox widens to earlier seasons", async ({ page }) => {
+    await start(page);
+    await openEvents(page);
+    await expect(eventRows(page).filter({ hasText: "Ontario" })).toHaveCount(0);
+
+    await page.setChecked("#activeOnly", false);
+    await expect(eventRows(page).filter({ hasText: "Ontario" })).toHaveCount(1);
+  });
+
+  test("tapping an event switches to it", async ({ page }) => {
+    await start(page);
+    await openEvents(page);
+    await eventRows(page).filter({ hasText: "WVROX" }).click();
+
+    // Not one of my team's events, so it opens in research mode and leaves mine saved.
+    await expect(page.locator("#eventChipValue")).toHaveText("WVROX");
+    await expect(page.locator("#researchBanner")).toBeVisible();
+    expect((await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), KEYS.config)).eventKey).toBe(MY_EVENT);
+  });
+
+  test("the mode is remembered across a reload", async ({ page }) => {
+    await start(page);
+    await openEvents(page);
+    await page.reload();
+    await page.waitForSelector(".tab");
+    await page.click('.tab[data-page="allteams"]');
+    await expect(page.locator("#allTitle")).toHaveText("All events");
+  });
+});
+
+/**
+ * Both lists were downloaded once and kept forever, so a team or event registered with
+ * FIRST afterwards stayed invisible until app data was cleared by hand.
+ */
+test.describe("stale caches", () => {
+  const eventsFetched = async (page, seed) => {
+    const seen = [];
+    await mock(page, { onRequest: (u) => seen.push(u) });
+    await openApp(page, server.baseURL, { state: { allEvents: seed } });
+    await page.click('.tab[data-page="allteams"]');
+    await page.click("#segEvents");
+    await page.waitForTimeout(800);
+    // Anchored on /v3/: the team's own /team/frcN/events/YYYY/simple would match a
+    // looser pattern and make a skipped download look like it happened.
+    return seen.filter((u) => /\/v3\/events\/\d+\/simple/.test(u)).length;
+  };
+
+  test("a day-old event list is re-downloaded", async ({ page }) => {
+    const yesterday = Date.now() - 25 * 60 * 60 * 1000;
+    const n = await eventsFetched(page, { 2026: { updated: yesterday, events: [EVENTS_2026[0]] } });
+    expect(n).toBeGreaterThan(0);
+    await expect(page.locator('#allTeamsList [data-event="2026wvrox"]')).toBeVisible();
+  });
+
+  test("a fresh event list is left alone", async ({ page }) => {
+    const n = await eventsFetched(page, { 2026: { updated: Date.now(), events: [EVENTS_2026[0]] } });
+    // Only the other season is fetched; this year's copy is current.
+    expect(n).toBeLessThanOrEqual(1);
+  });
+
+  test("a week-old team directory is re-downloaded", async ({ page }) => {
+    const seen = [];
+    await mock(page, { onRequest: (u) => seen.push(u) });
+    await openApp(page, server.baseURL, {
+      state: { allTeams: { updated: Date.now() - 8 * 24 * 60 * 60 * 1000, complete: true, teams: { 10021: "Golden Gears" }, loc: {} } },
+    });
+    seen.length = 0;
+    await page.click('.tab[data-page="allteams"]');
+    await expect.poll(() => seen.filter((u) => /\/teams\/\d+\/simple/.test(u)).length).toBeGreaterThan(0);
   });
 });

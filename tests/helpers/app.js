@@ -24,6 +24,8 @@ export const KEYS = {
   etags: "gg_etags_v1",
   teamEvents: "gg_team_events_v2",
   allTeams: "gg_all_teams_v2",
+  allEvents: "gg_all_events_v1",
+  allPrefs: "gg_all_prefs_v1",
   activeTeams: "gg_active_teams_v1",
   teamPower: "gg_team_power_v1",
   recentEvents: "gg_recent_events_v1",

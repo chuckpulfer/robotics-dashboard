@@ -68,6 +68,8 @@ const start = async (page) => {
 /** The All teams tab is where a team is looked up now: filter, then tap the row. */
 async function lookUpTeam(page, team) {
   await page.click('.tab[data-page="allteams"]');
+  // Active-this-season defaults to on, and this spec's mock lists no active teams.
+  await page.setChecked("#activeOnly", false);
   await page.fill("#allTeamSearch", String(team));
   const row = page.locator(`#allTeamsList [data-team="${team}"]`);
   await expect(row).toBeVisible();
