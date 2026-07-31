@@ -191,7 +191,7 @@ export const readConfig = (page) =>
  * alone is misleading here: refresh() overwrites rankings and matches from the
  * network, so a seeded-only fixture gets wiped moments after load.
  */
-export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore = -1, blueScore = -1, played = false, video = null, videos = null }) {
+export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore = -1, blueScore = -1, played = false, video = null, videos = null, time = 1_900_000_000 }) {
   return {
     key: key ?? `${comp}${num}`,
     comp_level: comp,
@@ -203,8 +203,9 @@ export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore =
     },
     // Only present on the full match record, never on /matches/simple.
     videos: videos ?? (video ? [{ type: "youtube", key: video }] : []),
-    time: 1_900_000_000,
-    predicted_time: 1_900_000_000,
+    // Specs that assert on a countdown pass a time relative to now.
+    time,
+    predicted_time: time,
     actual_time: played ? 1_700_000_000 : null,
     post_result_time: played ? 1_700_000_000 : null,
   };

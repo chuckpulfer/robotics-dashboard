@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",webcasts:"gg_webcasts_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
 const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
@@ -60,6 +60,7 @@ let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", te
 // Per season, not one shared flag: both seasons are now fetched together, and a
 // single flag would let the first in flight turn the second into a no-op.
 let allEventsCache=load(K.allEvents,{}), allEventsLoading={}, eventSearch="";
+let webcasts=load(K.webcasts,{});
 // Research mode points the whole app at someone else's event without disturbing yours.
 let research=load(K.research,{active:false,eventKey:"",name:""});
 function researching(){return !!research.active&&!!research.eventKey}
@@ -820,6 +821,43 @@ function scrollToNextMatch(behavior="smooth"){
  const m=nextMatch(); if(!m?.key)return;
  requestAnimationFrame(()=>document.getElementById("match-"+m.key)?.scrollIntoView({behavior,block:"start"}));
 }
+// ── Next-match countdown ───────────────────────────────────────────────────────────
+// Pinned to the top of the Mine page so the time to your next match stays on screen
+// however far down the timeline you have scrolled.
+function countdownText(sec){
+ const s=Math.max(0,Math.round(sec));
+ const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), r=s%60;
+ if(h)return `${h}h ${String(m).padStart(2,"0")}m`;
+ return `${m}:${String(r).padStart(2,"0")}`;
+}
+// A match is treated as under way from its scheduled time until a score is posted, which
+// is when the stream is worth watching and when a countdown would otherwise sit at zero.
+function nextBarState(){
+ const m=nextMatch();
+ if(!m||m.pending)return null;
+ const when=m.predicted_time||m.time||null;
+ const label=matchLabel(m)+(m.red?.includes(team)?" · RED":m.blue?.includes(team)?" · BLUE":"");
+ if(matchHasScore(m))return {m,label,when:"Final",live:false,over:true};
+ if(matchDone(m))return {m,label,when:"Awaiting score",live:true,over:false};
+ if(!when)return {m,label,when:"Time not posted",live:false,over:false};
+ const left=when-Date.now()/1000;
+ if(left<=0)return {m,label,when:"Now",live:true,over:false};
+ return {m,label,when:`in ${countdownText(left)}`,live:false,over:false};
+}
+function renderNextBar(){
+ const bar=$("nextBar"); if(!bar)return;
+ const st=nextBarState();
+ bar.hidden=!st;
+ if(!st)return;
+ $("nbWhen").textContent=st.when;
+ $("nbLabel").textContent=st.label;
+ bar.classList.toggle("live",st.live);
+ // The stream is only useful while the match is still to come or under way.
+ const stream=st.over?null:eventStream();
+ const watch=$("nbWatch");
+ watch.hidden=!stream;
+ if(stream){watch.href=stream.url;watch.textContent=stream.type==="youtube"?"▶ YouTube":stream.type==="twitch"?"▶ Twitch":"▶ Watch"}
+}
 function probability(m){
  const re=m.red.reduce((a,t)=>a+(+epa[t]?.total||0),0), be=m.blue.reduce((a,t)=>a+(+epa[t]?.total||0),0);
  if(!re&&!be)return null; const p=1/(1+Math.exp(-(re-be)/12)); return {red:Math.round(p*100),blue:Math.round((1-p)*100),re,be};
@@ -851,10 +889,17 @@ function nextMatchCard(m){
  const played=matchPlayTime(m), est=fmtMatchTime(m);
  const whenLabel=matchHasScore(m)?(played?`Final · ${played}`:"Final"):matchDone(m)?(played?`Played · ${played}`:"Pending"):est?`Est. ${est}`:"Time not posted";
  return `<div class="hero nexthero" id="match-${m.key}"><div class="eyebrow">Next match · ${mine} alliance</div><div class="hero-title">${matchLabel(m)}</div>
- <div class="countdown">${whenLabel}${matchVideoLink(m)}</div>
+ <div class="countdown">${whenLabel}${matchVideoLink(m)}${matchStreamLink(m)}</div>
  ${p?`<div class="metrics"><div class="metric"><b>${fmt(p.re)}</b><span>Red ${powerLabel}</span></div><div class="metric"><b>${p.red}%</b><span>Red estimate</span></div><div class="metric"><b>${fmt(p.be)}</b><span>Blue ${powerLabel}</span></div></div><button type="button" class="helpbtn power-help-inline" data-open-power-help aria-label="Explain ${powerLabel}">?</button>`:""}
  ${matchHasScore(m)?matchScoreboard(m):""}
  ${alliance("red",m.red,matchWinner(m)==="red")}${alliance("blue",m.blue,matchWinner(m)==="blue")}</div>`;
+}
+// Only for a match still to come or under way: once a score is posted the recording
+// link that matchVideoLink already provides is the useful one.
+function matchStreamLink(m){
+ if(matchHasScore(m))return "";
+ const s=eventStream(); if(!s)return "";
+ return ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">▶ Watch live</a>`;
 }
 function matchCard(m){
  if(m.pending)return pendingCard(m);
@@ -1207,7 +1252,7 @@ function renderPlayoffs(){
  el.innerHTML=keyReminder+champHtml+aHtml+bHtml;
 }
 // The full directory is thousands of rows, so it is only rebuilt while its tab is up.
-function render(){renderHeader();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
+function render(){renderHeader();renderNextBar();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(btn,state){
@@ -1287,6 +1332,32 @@ async function fetchTbaOprs(ids){
  recordTeamPower(Object.fromEntries(ranked.map(x=>[x.t,x.total])),activeEventKey());
  return ids.filter(t=>Number.isFinite(epa[t]?.total)).length;
 }
+// TBA carries the stream on the full event record, not the simple one. Events with a
+// stream per day list several; the one dated today wins, otherwise the first.
+async function fetchWebcasts(){
+ if(!hasApiKey())return;
+ const key=activeEventKey(); if(!key)return;
+ try{
+  const data=await api(`https://www.thebluealliance.com/api/v3/event/${key}`,`wc:${key}`);
+  if(data){webcasts[key]=data.webcasts||[];save(K.webcasts,webcasts)}
+ }catch{}
+}
+function webcastUrl(w){
+ if(!w?.channel)return null;
+ if(w.type==="youtube")return `https://www.youtube.com/watch?v=${encodeURIComponent(w.channel)}`;
+ if(w.type==="twitch")return `https://www.twitch.tv/${encodeURIComponent(w.channel)}`;
+ // Every other type TBA lists (livestream, dacast, nab, …) has no stable public URL
+ // pattern, so send those to the event page, which embeds whatever it is.
+ return `https://www.thebluealliance.com/event/${encodeURIComponent(activeEventKey())}`;
+}
+function eventStream(){
+ const list=webcasts[activeEventKey()]||[];
+ if(!list.length)return null;
+ const today=todayYmd();
+ const pick=list.find(w=>w.date===today)||list.find(w=>!w.date)||list[0];
+ const url=webcastUrl(pick);
+ return url?{url,type:pick.type}:null;
+}
 async function refreshPowerRatings(ids,notes){
  if(config.statbotics){
   const epaGood=await fetchStatbotics(ids);
@@ -1324,6 +1395,7 @@ async function refresh(force=false){
  if(hasApiKey())await loadTeamEvents({autoPick:false});
  await fetchAllEventMatches();
  await fetchAlliances();
+ await fetchWebcasts();
  render();
  const t=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
  $("statusTime").innerHTML=`<span class="ok">Updated ${t}</span>`;
@@ -1395,6 +1467,10 @@ $("refreshEventsBtn").addEventListener("click",async()=>{
  b.disabled=false;b.textContent="Update event list";
 });
 $("researchBanner").addEventListener("click",e=>{if(e.target.closest("[data-exit-research]"))exitResearch()});
+$("nextBarGo").addEventListener("click",()=>scrollToNextMatch());
+// One second, and only the bar: a full render every tick would rebuild the whole
+// timeline underneath the user's finger.
+setInterval(renderNextBar,1000);
 $("teamPageBack").addEventListener("click",closeTeamSeason);
 $("teamPage").addEventListener("click",e=>{
  const y=e.target.closest("[data-season-year]");
