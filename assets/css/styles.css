@@ -137,6 +137,11 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+/* Sits in the gutter between two of your match cards, with a rule running through it so
+   it reads as the distance between them rather than as part of either card. */
+.matchgap{display:flex;align-items:center;gap:8px;margin:-4px 10px 8px;
+  font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.matchgap::before,.matchgap::after{content:"";flex:1 1 auto;height:1px;background:var(--line)}
 /* Pinned under the header so the time to your next match is on screen however far down
    the timeline you have scrolled. */
 .nextbar{position:sticky;top:var(--header-h,0px);z-index:15;display:flex;align-items:stretch;gap:6px;

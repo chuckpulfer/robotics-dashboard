@@ -800,6 +800,24 @@ function matchVideoLink(m){
  if(!m?.video)return "";
  return `<a class="videolink" href="https://www.youtube.com/watch?v=${encodeURIComponent(m.video)}" target="_blank" rel="noopener" aria-label="Watch ${matchLabel(m)} on YouTube">▶ Video</a>`;
 }
+// The best-known clock time for a match: when it actually ran, else when it is expected.
+function matchWhenSec(m){return m?.actual_time||m?.post_result_time||m?.predicted_time||m?.time||null}
+function gapText(sec){
+ const mins=Math.round(sec/60);
+ if(mins<60)return `${mins}m`;
+ const h=Math.floor(mins/60), r=mins%60;
+ return r?`${h}h ${String(r).padStart(2,"0")}m`:`${h}h`;
+}
+// Shown between consecutive matches of yours: the breathing room between them, which is
+// what decides whether there is time to fix the robot or get to the stands.
+const MAX_GAP_SEC=48*60*60;
+function matchGapRow(prev,m){
+ const a=matchWhenSec(prev), b=matchWhenSec(m);
+ // Beyond a couple of days the two times are not really comparable — a stale estimate,
+ // or a schedule that has not been posted — and a four-figure hour count helps nobody.
+ if(!a||!b||b<=a||b-a>MAX_GAP_SEC)return "";
+ return `<div class="matchgap"><span>${gapText(b-a)} later</span></div>`;
+}
 function matchCardMeta(m){
  if(matchHasScore(m)){
   const played=matchPlayTime(m), label=matchWinner(m)==="tie"?"Tie":"Final";
@@ -912,7 +930,8 @@ function renderMatches(){
  // so an identity check against a separately-built list would never match.
  const list=myMatchList();
  const next=list.find(m=>!matchDone(m))||list[list.length-1];
- const cards=list.map(m=>m===next?nextMatchCard(m):matchCard(m)).join("");
+ // Gaps go between cards, so each one is emitted with the match that follows it.
+ const cards=list.map((m,i)=>(i?matchGapRow(list[i-1],m):"")+(m===next?nextMatchCard(m):matchCard(m))).join("");
  $("matchList").innerHTML=keyReminder+myStatusHtml()+(cards||'<div class="empty">No matches loaded.</div>');
 }
 function closestMatchToNow(allMatches){
