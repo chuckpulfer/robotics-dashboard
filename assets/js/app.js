@@ -1200,6 +1200,60 @@ function pendingCard(m,hero=false){
  <div class="prow tbd"><span class="apill">${m.oppNum?"A"+m.oppNum:"?"}</span><span class="pteams">${oppTxt}</span><span class="pscore">—</span></div>`;
  return `<div class="hero" id="match-${m.key}"><div class="eyebrow">${hero?"Next match · playoffs":matchLabel(m)}</div>${hero?`<div class="hero-title">${matchLabel(m)}</div>`:""}<div class="countdown">${when}</div>${rows}</div>`;
 }
+// ── Bracket graphic ────────────────────────────────────────────────────────────────
+// FRC playoffs are double elimination, so this is not the clean binary tree a March
+// Madness bracket is: the lower bracket takes losers from the upper one, and two of its
+// matches mix a loser and a winner from different rounds. Connector lines are therefore
+// drawn only where a pair of matches really does feed one match; every other feed is
+// named on the box instead, which is honest rather than tidy.
+const UPPER_COLS=[[[1,2],[3,4]],[[7,8]],[[11]]];
+const LOWER_COLS=[[[5],[6]],[[9,10]],[[12]],[[13]]];
+function boxSide(side,g,st){
+ const num=matchAllianceNum(g,side,st.map), won=matchWinner(g)===side;
+ const score=Number.isFinite(g[side+"Score"])?g[side+"Score"]:"";
+ return `<div class="bside ${side}${won?" won":""}"><span class="apill">${num?"A"+num:"–"}</span>`+
+  `<span class="bteams">${(g[side]||[]).map(t=>`<span class="${t===team?"mine":""}">${t}</span>`).join(" ")}</span>`+
+  `<span class="bscore">${score}</span></div>`;
+}
+function boxFeed(feed,st){
+ const r=resolveFeed(feed,st);
+ const teams=r.num?allianceTeamNums(r.num):[];
+ return `<div class="bside pendingside"><span class="apill">${r.num?"A"+r.num:"?"}</span>`+
+  `<span class="bteams">${teams.length?teams.map(t=>`<span class="${t===team?"mine":""}">${t}</span>`).join(" "):esc(r.label)}</span>`+
+  `<span class="bscore"></span></div>`;
+}
+function bracketBox(setNum,st){
+ const info=BRACKET[setNum], games=setGames(setNum), g=games[games.length-1];
+ const meta=g?matchCardMeta(g):{text:"",cls:"pending"};
+ const sides=g&&g.red?.length
+  ? boxSide("red",g,st)+boxSide("blue",g,st)
+  : info.feeds.map(f=>boxFeed(f,st)).join("");
+ const mine=g&&[...(g.red||[]),...(g.blue||[])].includes(team);
+ return `<div class="bmatch${mine?" mine":""}"><div class="bhead"><span>M${setNum}</span><span class="bwhen ${meta.cls}">${esc(meta.text)}</span></div>${sides}</div>`;
+}
+function bracketColumns(cols,st){
+ return cols.map(groups=>
+  `<div class="bcol">${groups.map(g=>
+    `<div class="bpair${g.length>1?" joined":""}">${g.map(sn=>bracketBox(sn,st)).join("")}</div>`
+  ).join("")}</div>`
+ ).join("");
+}
+function finalsBox(st){
+ const games=finalsGames(), wins=finalsSeriesWins(st);
+ const tally=Object.keys(wins).length?Object.entries(wins).map(([n,w])=>`A${n} ${w}`).join(" – "):"Best of 3";
+ const sides=games.length&&games[games.length-1].red?.length
+  ? games.map(g=>`<div class="bgame"><span class="bglabel">F${g.q}</span>${boxSide("red",g,st)}${boxSide("blue",g,st)}</div>`).join("")
+  : ["W11","W13"].map(f=>boxFeed(f,st)).join("");
+ return `<div class="bcol finals"><div class="bpair"><div class="bmatch final"><div class="bhead"><span>Finals</span><span class="bwhen">${esc(tally)}</span></div>${sides}</div></div></div>`;
+}
+function bracketGraphic(st){
+ return `<h2 class="section-title">Bracket</h2>
+ <div class="bracket-scroll"><div class="bracket">
+  <div class="bhalf"><div class="bhalf-label">Upper bracket</div><div class="brow">${bracketColumns(UPPER_COLS,st)}</div></div>
+  <div class="bhalf"><div class="bhalf-label">Lower bracket · one loss and you are out</div><div class="brow">${bracketColumns(LOWER_COLS,st)}</div></div>
+  <div class="bhalf"><div class="bhalf-label">Finals</div><div class="brow">${finalsBox(st)}</div></div>
+ </div></div>`;
+}
 function bracketMatchCard(s,st){
  const info=BRACKET[s], games=setGames(s), g=games[games.length-1];
  const meta=g?matchCardMeta(g):{text:"Not scheduled",cls:"pending"};
@@ -1264,11 +1318,11 @@ function renderPlayoffs(){
  let bHtml="";
  if(po.some(m=>m.comp==="qf"||m.comp==="ef"))bHtml=legacyPlayoffHtml(st);
  else if(po.length||alliances.length){
-  bHtml=`<h2 class="section-title">Bracket</h2>`+BRACKET_ROUNDS.map(([r,ms])=>
+  bHtml=bracketGraphic(st)+`<h2 class="section-title">Match detail</h2>`+BRACKET_ROUNDS.map(([r,ms])=>
    `<div class="round-title">Round ${r}</div><div class="pgrid">${ms.map(s=>bracketMatchCard(s,st)).join("")}</div>`
   ).join("")+finalsHtml(st);
  }
- el.innerHTML=keyReminder+champHtml+aHtml+bHtml;
+ el.innerHTML=keyReminder+champHtml+bHtml+aHtml;
 }
 // The full directory is thousands of rows, so it is only rebuilt while its tab is up.
 function render(){renderHeader();renderNextBar();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
