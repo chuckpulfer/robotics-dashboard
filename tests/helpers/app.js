@@ -203,11 +203,13 @@ export function tbaMatch({ key, comp = "qm", set = 1, num, red, blue, redScore =
     },
     // Only present on the full match record, never on /matches/simple.
     videos: videos ?? (video ? [{ type: "youtube", key: video }] : []),
-    // Specs that assert on a countdown pass a time relative to now.
+    // Specs that assert on a countdown pass a time relative to now. A played match ran
+    // at roughly its scheduled time, as real data has it — pinning actual_time to a
+    // fixed instant instead made gaps between matches come out as thousands of hours.
     time,
     predicted_time: time,
-    actual_time: played ? 1_700_000_000 : null,
-    post_result_time: played ? 1_700_000_000 : null,
+    actual_time: played ? time + 120 : null,
+    post_result_time: played ? time + 300 : null,
   };
 }
 

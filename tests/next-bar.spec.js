@@ -152,3 +152,63 @@ test("no bar when there are no matches", async ({ page }) => {
   await start(page, { schedule: [] });
   await expect(page.locator("#nextBar")).toBeHidden();
 });
+
+/**
+ * The gap between consecutive matches of yours is what decides whether there is time to
+ * fix the robot or get to the stands, so it is shown between the cards rather than left
+ * to be worked out from two clock times.
+ */
+test.describe("time between my matches", () => {
+  const gaps = (page) => page.locator("#matchList .matchgap");
+
+  test("shows the gap between each pair of matches", async ({ page }) => {
+    await start(page, {
+      schedule: [
+        tbaMatch({ num: 1, red: [1, 2, 3], blue: [MY, 4, 5], redScore: 40, blueScore: 55, played: true, time: at(-155) }),
+        tbaMatch({ num: 11, red: [1, 2, 3], blue: [MY, 4, 5], redScore: 40, blueScore: 55, played: true, time: at(-52) }),
+        tbaMatch({ num: 17, red: [MY, 2, 3], blue: [4, 5, 6], time: at(23) }),
+      ],
+    });
+    // A played match counts from when it actually ran, which the fixture puts two
+    // minutes after its slot — so 103 minutes, then 73.
+    await expect(gaps(page)).toHaveText(["1h 43m later", "1h 13m later"]);
+  });
+
+  test("uses minutes alone under an hour", async ({ page }) => {
+    await start(page, {
+      schedule: [
+        tbaMatch({ num: 1, red: [1, 2, 3], blue: [MY, 4, 5], redScore: 40, blueScore: 55, played: true, time: at(-40) }),
+        tbaMatch({ num: 6, red: [MY, 2, 3], blue: [4, 5, 6], time: at(2) }),
+      ],
+    });
+    await expect(gaps(page)).toHaveText(["40m later"]);
+  });
+
+  test("a gap sits between the two cards it separates", async ({ page }) => {
+    await start(page, {
+      schedule: [
+        tbaMatch({ num: 1, red: [1, 2, 3], blue: [MY, 4, 5], redScore: 40, blueScore: 55, played: true, time: at(-40) }),
+        tbaMatch({ num: 6, red: [MY, 2, 3], blue: [4, 5, 6], time: at(2) }),
+      ],
+    });
+    const order = await page.$$eval("#matchList > *", (els) =>
+      els.map((e) => (e.classList.contains("matchgap") ? "GAP" : e.id || e.className.split(" ")[1] || "card")));
+    expect(order.join(",")).toContain("match-qm1,GAP,match-qm6");
+  });
+
+  test("no gap before the first match", async ({ page }) => {
+    await start(page, { schedule: [tbaMatch({ num: 6, red: [MY, 2, 3], blue: [4, 5, 6], time: at(20) })] });
+    await expect(gaps(page)).toHaveCount(0);
+  });
+
+  test("an implausible gap is left out rather than shown in four figures", async ({ page }) => {
+    await start(page, {
+      schedule: [
+        tbaMatch({ num: 1, red: [1, 2, 3], blue: [MY, 4, 5], redScore: 40, blueScore: 55, played: true, time: at(-60) }),
+        // Three days out: a stale estimate, not a real gap between two matches.
+        tbaMatch({ num: 6, red: [MY, 2, 3], blue: [4, 5, 6], time: at(3 * 24 * 60) }),
+      ],
+    });
+    await expect(gaps(page)).toHaveCount(0);
+  });
+});
