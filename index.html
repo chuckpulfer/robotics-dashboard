@@ -10,7 +10,7 @@
   <meta name="app-version" content="__APP_VERSION__">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/styles.css?v=31">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=33">
   <title>RoboGear Pass</title>
 </head>
 <body>
@@ -27,7 +27,16 @@
 <div id="researchBanner" class="researchbar" hidden></div>
 
 <main>
-<section class="page active" id="page-matches"><div id="matchList"></div></section>
+<section class="page active" id="page-matches">
+  <div class="nextbar" id="nextBar" hidden>
+    <button class="nextbar-go" id="nextBarGo" type="button">
+      <span class="nb-when" id="nbWhen">—</span>
+      <span class="nb-label" id="nbLabel"></span>
+    </button>
+    <a class="nb-watch" id="nbWatch" target="_blank" rel="noopener" hidden>▶ Watch</a>
+  </div>
+  <div id="matchList"></div>
+</section>
 <section class="page" id="page-allmatches"><div id="allMatchList"></div></section>
 <section class="page" id="page-playoffs"><div id="playoffContent"></div></section>
 <section class="page" id="page-teams">
@@ -41,10 +50,15 @@
 </section>
 <section class="page" id="page-allteams">
   <div class="teams-sticky">
-    <div class="titlebar"><h2>All teams</h2></div>
+    <div class="titlebar"><h2 id="allTitle">All teams</h2>
+      <div class="segmented" role="tablist" aria-label="Show teams or events">
+        <button class="seg active" id="segTeams" data-mode="teams" type="button" role="tab" aria-selected="true">Teams</button>
+        <button class="seg" id="segEvents" data-mode="events" type="button" role="tab" aria-selected="false">Events</button>
+      </div>
+    </div>
     <div class="teams-controls">
       <label class="combo"><input id="allTeamSearch" type="search" placeholder="Filter by number, name, state or country" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search"><div class="combolist" id="allTeamSearchList" hidden></div></label>
-      <label class="check"><input id="activeOnly" type="checkbox"> Active this season</label>
+      <label class="check"><input id="activeOnly" type="checkbox" checked> <span id="activeOnlyLabel">Active this season</span></label>
     </div>
   </div>
   <div id="allTeamsList" class="teams-grid"></div>
@@ -126,5 +140,5 @@
   <p class="note sheetnote" id="switcherNote"></p>
 </dialog>
 
-<script src="./assets/js/app.js?v=42"></script>
+<script src="./assets/js/app.js?v=44"></script>
 </body></html>

@@ -137,6 +137,30 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+/* Pinned under the header so the time to your next match is on screen however far down
+   the timeline you have scrolled. */
+.nextbar{position:sticky;top:var(--header-h,0px);z-index:15;display:flex;align-items:stretch;gap:6px;
+  margin:0 0 10px;padding:0;background:var(--bg)}
+.nextbar-go{flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:9px;text-align:left;
+  border:1px solid color-mix(in srgb,var(--gold) 55%,var(--line));border-radius:12px;padding:8px 12px;
+  background:var(--goldbg);color:var(--gold)}
+.nb-when{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.nb-label{font-size:12px;font-weight:700;color:color-mix(in srgb,var(--gold) 80%,var(--text));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.nb-watch{flex:0 0 auto;display:flex;align-items:center;text-decoration:none;font-size:13px;font-weight:800;
+  border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--panel);color:var(--text)}
+.nextbar.live .nextbar-go{background:var(--redbg);border-color:color-mix(in srgb,var(--red) 55%,var(--line));color:var(--red)}
+.nextbar.live .nb-label{color:color-mix(in srgb,var(--red) 80%,var(--text))}
+.segmented{display:flex;flex:0 0 auto;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel)}
+.seg{border:0;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:6px 14px}
+.seg.active{background:var(--goldbg);color:var(--gold)}
+.allevent-item{display:grid;grid-template-columns:78px minmax(0,1fr) 76px;gap:6px;padding:8px;align-items:center;
+  border-bottom:1px solid var(--line);font-size:13px;background:var(--bg);cursor:pointer}
+.allevent-item.current{background:var(--goldbg)}
+.allevent-item .ev-key{font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+.allevent-item .ev-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.allevent-item .ev-when{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.allevent-item .ev-live{color:var(--gold);font-weight:700}
 /* The full directory is thousands of rows, so the columns are narrower than the event
    table: number, name, where they are from, and OPR. */
 #page-allteams{padding-bottom:0}
