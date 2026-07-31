@@ -137,6 +137,41 @@ label.combo{position:relative}
 .prow.won{font-weight:700} .prow.won .pscore{color:var(--green)}
 .tnum-tap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
 .tnum-tap.mine{color:var(--gold);font-weight:800}
+/* The bracket is wider than any phone, so it scrolls sideways inside its own box rather
+   than making the whole page scroll. */
+.bracket-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin:0 -12px;padding-left:12px;padding-right:12px}
+.bracket{display:flex;flex-direction:column;gap:14px;min-width:min-content}
+.bhalf-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
+.brow{display:flex;align-items:stretch;gap:22px}
+.bcol{display:flex;flex-direction:column;justify-content:space-around;gap:12px;flex:0 0 auto}
+.bpair{position:relative;display:flex;flex-direction:column;justify-content:center;gap:12px}
+/* The elbow joining a pair of matches to the one they feed: a stub out of each box, a
+   spine linking the two stubs, and a stub from the spine into the next column. Drawn
+   only on pairs that really do feed one match — see the note in app.js. */
+.bconn{--c:color-mix(in srgb,var(--muted) 55%,transparent)}
+.bpair.joined::after{content:"";position:absolute;right:-11px;top:25%;bottom:25%;
+  border-right:2px solid color-mix(in srgb,var(--muted) 55%,transparent);border-radius:0 4px 4px 0}
+.bpair.joined>.bmatch::after{content:"";position:absolute;right:-11px;top:calc(50% - 1px);width:11px;
+  border-top:2px solid color-mix(in srgb,var(--muted) 55%,transparent)}
+.bpair.joined::before{content:"";position:absolute;right:-22px;top:calc(50% - 1px);width:11px;
+  border-top:2px solid color-mix(in srgb,var(--muted) 55%,transparent)}
+.bmatch{position:relative;width:172px;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.bmatch.mine{border-color:color-mix(in srgb,var(--gold) 60%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--gold) 35%,transparent)}
+.bmatch.final{width:196px}
+.bhead{display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:5px 8px;background:var(--bg);border-bottom:1px solid var(--line);font-size:10px;font-weight:800;color:var(--muted)}
+.bwhen{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bside{display:flex;align-items:center;gap:6px;padding:5px 8px;font-size:12px;border-top:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+.bside:first-of-type{border-top:0}
+.bside.red{background:color-mix(in srgb,var(--redbg) 45%,var(--panel))}
+.bside.blue{background:color-mix(in srgb,var(--bluebg) 45%,var(--panel))}
+.bside.won{font-weight:800;box-shadow:inset 3px 0 0 var(--green)}
+.bside.pendingside{color:var(--muted)}
+.bteams{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.bteams .mine{font-weight:800;color:var(--gold)}
+.bscore{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:800}
+.bgame{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.bgame:first-of-type{border-top:0}
+.bglabel{font-size:9px;font-weight:800;color:var(--muted);padding:3px 8px 0;text-transform:uppercase;letter-spacing:.05em}
 /* Sits in the gutter between two of your match cards, with a rule running through it so
    it reads as the distance between them rather than as part of either card. */
 .matchgap{display:flex;align-items:center;gap:8px;margin:-4px 10px 8px;
