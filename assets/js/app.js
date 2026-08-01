@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",webcasts:"gg_webcasts_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",webcasts:"gg_webcasts_v1",eventOpr:"gg_event_opr_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
 const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
@@ -61,6 +61,10 @@ let powerSource="cached", powerLabel="EPA", rankLabel="World", teamSearch="", te
 // single flag would let the first in flight turn the second into a no-op.
 let allEventsCache=load(K.allEvents,{}), allEventsLoading={}, eventSearch="";
 let webcasts=load(K.webcasts,{});
+// OPR for the current event, kept apart from `epa`. `epa` holds whichever rating drives
+// the win estimates — EPA when Statbotics answers, else OPR — so it cannot also be the
+// source for an OPR column without the two columns showing the same number.
+let eventOpr=load(K.eventOpr,{});
 // Research mode points the whole app at someone else's event without disturbing yours.
 let research=load(K.research,{active:false,eventKey:"",name:""});
 function researching(){return !!research.active&&!!research.eventKey}
@@ -630,12 +634,24 @@ function teamMatchesSearch(t,q){
  const name=(teams[t]||"").toLowerCase(), query=q.toLowerCase().trim();
  return String(t).includes(query)||name.includes(query);
 }
+function teamEpa(t){return epa[t]?.source==="epa"?epa[t]:null}
+// Ratings sort high to low, and a team without one goes to the bottom either way.
+function byRating(get){return (a,b)=>{
+ const x=get(a), y=get(b);
+ if(!Number.isFinite(x)&&!Number.isFinite(y))return a-b;
+ if(!Number.isFinite(x))return 1;
+ if(!Number.isFinite(y))return -1;
+ return y-x||a-b;
+}}
 function sortedTeams(){
  const list=allEventTeams();
  return list.sort((a,b)=>{
   if(teamSort==="number")return a-b;
-  if(teamSort==="event")return (rankings[a]?.rank??99999)-(rankings[b]?.rank??99999)||(epa[a]?.rank??99999)-(epa[b]?.rank??99999)||a-b;
+  if(teamSort==="event")return (rankings[a]?.rank??99999)-(rankings[b]?.rank??99999)||a-b;
   if(teamSort==="name")return (teams[a]||"").localeCompare(teams[b]||"","en",{sensitivity:"base"})||a-b;
+  if(teamSort==="opr")return byRating(t=>eventOpr[t]?.total)(a,b);
+  if(teamSort==="epa")return byRating(t=>teamEpa(t)?.total)(a,b);
+  if(teamSort==="record")return byRating(t=>Number(rankings[t]?.record?.split("-")[0]))(a,b);
   return (epa[a]?.rank??99999)-(epa[b]?.rank??99999)||a-b;
  });
 }
@@ -653,8 +669,11 @@ function teamNextLabel(t){
  return `Q${m.q}${at?" · "+at:""}`;
 }
 function teamTableRow(t){
- const s=epa[t]||{}, r=rankings[t]||{};
- return `<div class="team-item ${t===team?"my-team":""}" data-team="${t}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${rank(s.rank)}</div><div class="stat">${fmt(s.total)}</div><div class="stat">${r.record||"—"}</div><div class="stat next">${teamNextLabel(t)}</div></div>`;
+ const r=rankings[t]||{}, o=eventOpr[t], e=teamEpa(t);
+ // fmt() coerces, and +undefined is NaN but +null is 0, so an absent rating is caught
+ // before it rather than being printed as 0.0.
+ const val=x=>Number.isFinite(x)?fmt(x):"—";
+ return `<div class="team-item ${t===team?"my-team":""}" data-team="${t}"><div class="team-num">${t}${t===team?" ⭐":""}</div><div class="team-name">${teams[t]||"Team "+t}</div><div class="stat">${rank(r.rank)}</div><div class="stat">${val(o?.total)}</div><div class="stat">${val(e?.total)}</div><div class="stat">${r.record||"—"}</div></div>`;
 }
 // A 304 says "you already have it". If the copy it refers to is gone, the ETag has
 // outlived its data, so drop it and ask for a full response.
@@ -764,10 +783,11 @@ function teamDetailHtml(t){
  <div class="teamstats">
   <div class="tiny"><b>${rank(r.rank)}</b><span>Event rank</span></div>
   <div class="tiny"><b>${r.record||"—"}</b><span>Qual record</span></div>
-  <div class="tiny"><b>${rank(s.rank)}</b><span>${rankLabel}</span></div>
-  <div class="tiny"><b>${fmt(s.total)}</b><span>${powerLabel}</span></div>
+  <div class="tiny"><b>${Number.isFinite(eventOpr[t]?.total)?fmt(eventOpr[t].total):"—"}</b><span>OPR</span></div>
+  <div class="tiny"><b>${Number.isFinite(teamEpa(t)?.total)?fmt(teamEpa(t).total):"—"}</b><span>EPA</span></div>
  </div>
  <div class="tdloc">${teamLocationText(t)}</div>
+ <div class="tdloc">Next match · ${esc(teamNextLabel(t))}</div>
  <button type="button" class="iconbtn tdseason" data-team-season="${t}">View ${YEAR} season</button>`;
 }
 function openTeamDetail(t){
@@ -952,12 +972,20 @@ async function renderAllMatches(){
  const closest=closestMatchToNow(eventMatches);
  if(closest?.key)requestAnimationFrame(()=>document.getElementById("match-"+closest.key)?.scrollIntoView({behavior:"auto",block:"center"}));
 }
+// Every sortable heading gets the active state from the same place, so a column cannot
+// be sorted by without its own heading lighting up — which is what went wrong when two
+// headings shared one sort key and only the first was ever marked.
+function teamSortHead(key,label,extra=""){
+ return `<button data-sort="${key}" class="header-btn${extra?" "+extra:""}${teamSort===key?" active":""}" aria-sort="${teamSort===key?"descending":"none"}">${label}</button>`;
+}
 function renderTeams(){
  const q=teamSearch, list=sortedTeams().filter(t=>teamMatchesSearch(t,q));
  if(!list.length){$("teamList").innerHTML='<div class="empty">No teams match your search.</div>';return}
- $("teamList").innerHTML=`<div class="teams-header">
- <button data-sort="number" class="header-btn ${teamSort==="number"?"active":""}">Team</button><button data-sort="name" class="header-btn ${teamSort==="name"?"active":""}">Name</button>
- <button data-sort="event" class="header-btn ${teamSort==="event"?"active":""}">Event</button><button data-sort="power" class="header-btn ${teamSort==="power"?"active":""}">Wld</button><button data-sort="power" class="header-btn stat-btn">Pwr</button><button data-sort="event" class="header-btn stat-btn">Rec</button><div class="stat-label">Next</div>
+ $("teamList").innerHTML=`<div class="teams-header">`+
+  teamSortHead("number","Team")+teamSortHead("name","Name")+
+  teamSortHead("event","Event")+
+  teamSortHead("opr","OPR","stat-btn")+teamSortHead("epa","EPA","stat-btn")+
+  teamSortHead("record","Rec","stat-btn")+`
  </div>${list.map(teamTableRow).join("")}`;
 }
 // "All teams" means the downloaded TBA directory, on its own. teamDirectory() folds in
@@ -1399,7 +1427,13 @@ async function fetchTbaOprs(ids){
  }
  if(!data.oprs)return 0;
  const ranked=Object.entries(data.oprs).map(([k,v])=>({t:tn(k),total:+v})).filter(x=>Number.isFinite(x.total)).sort((a,b)=>b.total-a.total);
- ranked.forEach((x,i)=>{if(ids.includes(x.t))epa[x.t]={total:x.total,rank:i+1,source:"opr"};});
+ ranked.forEach((x,i)=>{
+  eventOpr[x.t]={total:x.total,rank:i+1};
+  // epa only takes the OPR when nothing better is there, so enabling Statbotics does
+  // not have OPR overwrite the EPA the win estimates are using.
+  if(ids.includes(x.t)&&epa[x.t]?.source!=="epa")epa[x.t]={total:x.total,rank:i+1,source:"opr"};
+ });
+ save(K.eventOpr,eventOpr);
  // Every event carries OPR for its whole field, not just the teams on screen, so the
  // All teams catalogue is filled from the full response.
  recordTeamPower(Object.fromEntries(ranked.map(x=>[x.t,x.total])),activeEventKey());
@@ -1431,16 +1465,20 @@ function eventStream(){
  const url=webcastUrl(pick);
  return url?{url,type:pick.type}:null;
 }
+// Both ratings are fetched now that the Teams tab shows them in their own columns. OPR
+// is a single request for the whole field, so it is always worth having; EPA is one
+// request per team, so it stays behind the Statbotics setting.
 async function refreshPowerRatings(ids,notes){
  if(config.statbotics){
   const epaGood=await fetchStatbotics(ids);
-  if(epaGood){saveLive(K.epa,epa);syncPowerLabels();notes.push(`${epaGood} EPA`);return}
+  if(epaGood)notes.push(`${epaGood} EPA`);
  }
  try{
-  const data=await fetchTbaOprs(ids);
-  if(data){saveLive(K.epa,epa);syncPowerLabels();notes.push(`${data} OPR from TBA`);return}
-  notes.push("OPR unavailable");
+  const good=await fetchTbaOprs(ids);
+  if(good)notes.push(`${good} OPR from TBA`);
+  else notes.push("OPR unavailable");
  }catch(e){notes.push(`OPR ${e.message||"cached"}`)}
+ saveLive(K.epa,epa);
  syncPowerLabels();
 }
 async function refresh(force=false){
