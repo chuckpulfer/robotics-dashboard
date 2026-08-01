@@ -171,6 +171,65 @@ test("the bracket comes before the alliance list", async ({ page }) => {
 
 test("says so when nothing has been posted yet", async ({ page }) => {
   await openBracket(page, { playoffs: [], allianceList: [] }).catch(() => {});
-  await expect(page.locator("#playoffContent")).toContainText("once alliance selection is posted");
+  await expect(page.locator("#playoffContent")).toContainText("Alliance selection has not been posted");
   await expect(page.locator(".bracket")).toHaveCount(0);
+});
+
+/**
+ * Before alliance selection TBA has nothing to build a bracket from. Saying only that
+ * reads like the app is stuck, which is exactly how it looked at an event with quals
+ * nearly finished — so the wait now reports progress and who is currently top eight.
+ */
+test.describe("waiting for alliance selection", () => {
+  const quals = (played, total) =>
+    Array.from({ length: total }, (_, i) =>
+      tbaMatch({
+        num: i + 1, red: [A[0][0], A[1][0], A[2][0]], blue: [A[3][0], A[4][0], A[5][0]],
+        redScore: i < played ? 50 : -1, blueScore: i < played ? 40 : -1, played: i < played,
+      }));
+
+  async function openWaiting(page, { played = 120, total = 125 } = {}) {
+    await page.route("https://www.thebluealliance.com/**", (route) => {
+      const url = route.request().url();
+      const send = (b) => route.fulfill({
+        status: 200, contentType: "application/json",
+        headers: { "Access-Control-Expose-Headers": "ETag" }, body: JSON.stringify(b),
+      });
+      if (/\/event\/[^/]+$/.test(url)) return send({ key: EVENT, name: "WVROX", webcasts: [] });
+      if (/team\/frc\d+\/events\/2026\/simple/.test(url))
+        return send([{ key: EVENT, name: "WVROX", start_date: "2026-07-31", end_date: "2026-08-01" }]);
+      if (/team\/frc\d+\/events\/\d+\/simple/.test(url)) return send([]);
+      if (url.includes("/alliances")) return send([]);          // not posted yet
+      if (/\/event\/[^/]+\/matches(\/simple)?(\?|$)/.test(url)) return send(quals(played, total));
+      if (url.includes("/rankings"))
+        return send({ rankings: A.map((a, i) => tbaRanking(a[0], i + 1, 10 - i, i)) });
+      return send([]);
+    });
+    await page.route("https://api.statbotics.io/**", (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+    await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, eventKey: EVENT } });
+    await waitForRefresh(page);
+    await page.click('.tab[data-page="playoffs"]');
+  }
+
+  test("says how far the qualifications have got", async ({ page }) => {
+    await openWaiting(page);
+    await expect(page.locator("#playoffContent .empty")).toContainText("120 of 125 qualification matches played");
+    await expect(page.locator(".bracket")).toHaveCount(0);
+  });
+
+  test("shows who is currently in the top eight", async ({ page }) => {
+    await openWaiting(page);
+    await expect(page.locator("#playoffContent .acard")).toHaveCount(8);
+    const first = page.locator("#playoffContent .acard").first();
+    await expect(first).toContainText("#1");
+    await expect(first).toContainText(String(A[0][0]));
+  });
+
+  test("marks my team in the preview", async ({ page }) => {
+    await openWaiting(page);
+    // 10021 is A[1][0], ranked second.
+    await expect(page.locator("#playoffContent .acard.minecard")).toHaveCount(1);
+    await expect(page.locator("#playoffContent .acard.minecard")).toContainText(String(MY));
+  });
 });

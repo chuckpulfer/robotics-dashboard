@@ -108,6 +108,12 @@ label.combo{position:relative}
 @media(min-width:560px){.agrid,.pgrid{grid-template-columns:1fr 1fr}}
 .acard{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px 11px}
 .acard.out{opacity:.6} .acard.minecard{border-color:color-mix(in srgb,var(--gold) 55%,var(--line))}
+/* The pre-selection top-eight preview on the Playoffs tab. */
+.ahead2{display:flex;align-items:baseline;gap:8px;font-size:15px}
+.ahead2 b{color:var(--gold);font-variant-numeric:tabular-nums}
+.ahead2 .tnum-tap{font-weight:800}
+.aname{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arec{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .ahdr{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .aseed{font-weight:800;font-size:14px}
 .abadge{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}

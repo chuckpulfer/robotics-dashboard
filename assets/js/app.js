@@ -1330,12 +1330,35 @@ function allianceCard(a,idx){
  const mine=(a.picks||[]).some(k=>tn(k)===team)||tn(a.backup?.in)===team;
  return `<div class="acard${stat==="eliminated"?" out":""}${mine?" minecard":""}"><div class="ahdr"><span class="aseed">Alliance ${num}</span>${badge}</div>${rows}${rec?`<div class="arec">${rec}</div>`:""}</div>`;
 }
+// Before alliance selection TBA has nothing to draw a bracket from, and saying only
+// that reads like the app is stuck — especially mid-event with quals nearly done. Show
+// how far quals have got, and who is currently in the top eight, since those are the
+// teams about to be picking.
+function playoffWaitingHtml(){
+ const all=allMatches[activeEventKey()]||[];
+ const played=all.filter(matchHasScore).length;
+ const ranked=Object.entries(rankings)
+  .map(([t,r])=>({t:+t,rank:r?.rank,record:r?.record}))
+  .filter(x=>Number.isFinite(x.rank))
+  .sort((a,b)=>a.rank-b.rank);
+ const progress=all.length
+  ? `${played} of ${all.length} qualification matches played.`
+  : hasApiKey()?"No qualification matches loaded yet.":"";
+ const top=ranked.slice(0,8);
+ const topHtml=top.length?`<h2 class="section-title">Top 8 right now</h2>
+  <div class="note">Alliance captains are picked in rank order, so this is who would be choosing if selection happened now.</div>
+  <div class="agrid">${top.map(x=>
+   `<div class="acard${x.t===team?" minecard":""}"><div class="ahead2"><b>#${x.rank}</b><span class="tnum-tap" data-team="${x.t}">${x.t}</span></div>`+
+   `<div class="aname">${esc(teams[x.t]||"Team "+x.t)}</div><div class="arec">${esc(x.record||"—")}</div></div>`
+  ).join("")}</div>`:"";
+ return `<div class="empty">Alliance selection has not been posted to The Blue Alliance yet. ${esc(progress)}</div>${topHtml}`;
+}
 function renderPlayoffs(){
  const el=$("playoffContent"); if(!el)return;
  const alliances=eventAlliances(), po=eventPlayoffs();
  const keyReminder=!hasApiKey()?'<div class="alert">Add your TBA read API key in <button type="button" class="alert-link" data-open-settings>Settings</button> to load alliances and playoff results.</div>':"";
  if(!alliances.length&&!po.length){
-  el.innerHTML=keyReminder+'<div class="empty">Alliances and the playoff bracket will appear here once alliance selection is posted to The Blue Alliance.</div>';
+  el.innerHTML=keyReminder+playoffWaitingHtml();
   return;
  }
  const st=bracketState(), wins=finalsSeriesWins(st);
