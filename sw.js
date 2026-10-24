@@ -1,4 +1,4 @@
-const CACHE="gg-iri-app-v5";
+const CACHE="gg-iri-app-v6";
 const SHELL=[
   "./",
   "./index.html",
@@ -22,4 +22,17 @@ self.addEventListener("fetch",e=>{
     if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}
     return r;
   }).catch(()=>caches.match("./index.html"))));
+});
+
+// Match reminders are shown through this registration, because an installed web app on
+// iOS allows no other route. Tapping one should land in the app that is already open
+// rather than a second copy of it, so an existing window is focused where there is one.
+self.addEventListener("notificationclick",e=>{
+  e.notification.close();
+  e.waitUntil((async()=>{
+    const open=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+    const hit=open.find(c=>c.url.startsWith(self.registration.scope));
+    if(hit)return hit.focus();
+    return self.clients.openWindow(e.notification.data?.url||"./");
+  })());
 });

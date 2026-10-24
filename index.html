@@ -88,6 +88,13 @@
     <button class="iconbtn" id="refreshEventsBtn" type="button">Update event list</button>
     <div class="note" id="eventDirNote"></div>
   </div></details>
+  <details id="notifyPanel"><summary>Match notifications</summary><div class="settings">
+    <div class="note">A heads-up five minutes before each of your team’s matches, naming your alliance colour.</div>
+    <label class="check"><input id="notifyEnabled" type="checkbox"> Remind me 5 minutes before my matches</label>
+    <div class="note" id="notifyStatus"></div>
+    <button class="iconbtn" id="notifyTestBtn" type="button">Send a test notification</button>
+    <div class="note">Only fires while the app is open or in the background, not once it is closed.</div>
+  </div></details>
   <details><summary>Add to Home Screen</summary><div class="settings">
     <div class="note">Installs the dashboard like an app: full screen, its own icon, and it opens offline.</div>
     <ol class="steps">
@@ -140,5 +147,5 @@
   <p class="note sheetnote" id="switcherNote"></p>
 </dialog>
 
-<script src="./assets/js/app.js?v=49"></script>
+<script src="./assets/js/app.js?v=50"></script>
 </body></html>

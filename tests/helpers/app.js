@@ -36,6 +36,7 @@ export const KEYS = {
   playoffs: "gg_playoffs_v1",
   teamLoc: "gg_team_loc_v1",
   recentTeams: "gg_recent_teams_v1",
+  notified: "gg_notified_v1",
 };
 
 export const DEFAULT_CONFIG = {
@@ -45,6 +46,7 @@ export const DEFAULT_CONFIG = {
   team: 10021,
   eventManual: true,
   statbotics: false,
+  notify: false,
 };
 
 const CORS = { "Access-Control-Expose-Headers": "ETag" };

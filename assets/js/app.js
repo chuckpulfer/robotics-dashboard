@@ -1,5 +1,5 @@
 const DEFAULT_TEAM=10021, YEAR=2026, DEFAULT_REFRESH=300;
-const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",webcasts:"gg_webcasts_v1",eventOpr:"gg_event_opr_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1"};
+const K={config:"gg_config_v5",matches:"gg_matches_v1",rankings:"gg_rankings_v1",teams:"gg_teams_v1",epa:"gg_epa_v1",etags:"gg_etags_v1",teamEvents:"gg_team_events_v2",allTeams:"gg_all_teams_v2",activeTeams:"gg_active_teams_v1",teamPower:"gg_team_power_v1",recentFilters:"gg_recent_filters_v1",allPrefs:"gg_all_prefs_v1",webcasts:"gg_webcasts_v1",eventOpr:"gg_event_opr_v1",allMatches:"gg_all_matches_v1",alliances:"gg_alliances_v1",playoffs:"gg_playoffs_v1",teamLoc:"gg_team_loc_v1",allEvents:"gg_all_events_v1",research:"gg_research_v1",teamSeason:"gg_team_season_v1",recentTeams:"gg_recent_teams_v1",recentEvents:"gg_recent_events_v1",notified:"gg_notified_v1"};
 const RECENT_TEAMS_MAX=20, RECENT_EVENTS_MAX=20;
 const FALLBACK=[
 {key:"qm6",q:6,red:[8085,3641,469],blue:[10021,2056,2767]},
@@ -18,7 +18,7 @@ const APP_VERSION=document.querySelector('meta[name="app-version"]')?.content||"
 const VERSION_STAMPED=!!APP_VERSION&&APP_VERSION!=="__APP_VERSION__";
 const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false});
+let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false,notify:false});
 let team=+config.team||DEFAULT_TEAM;
 let teamEvents=(()=>{const c=load(K.teamEvents,null);return c?.team===team?c.events||[]:[]})();
 let matches=load(K.matches,null);
@@ -896,6 +896,104 @@ function renderNextBar(){
  watch.hidden=!stream;
  if(stream){watch.href=stream.url;watch.textContent=stream.type==="youtube"?"▶ YouTube":stream.type==="twitch"?"▶ Twitch":"▶ Watch"}
 }
+// ── Match reminders ───────────────────────────────────────────────────
+// A notification five minutes before one of your team's matches, naming the alliance
+// colour you are on. There is no server behind this app — it is a static site — so there
+// is no web push and nothing wakes the app from outside. The reminder is scheduled by the
+// page itself, which means it fires while the app is running: open in front of you, or
+// backgrounded as an installed web app. Once it is fully closed nothing is left to fire
+// it, which is what the note in Settings says.
+const NOTIFY_LEAD_SEC=5*60, NOTIFY_CHECK_MS=15000;
+// Matches already announced, keyed by match to the start time announced for them. The
+// time is kept rather than a bare flag so a schedule that slips well past the reminder
+// can announce again instead of going quiet.
+let notified=load(K.notified,{});
+function notifySupported(){return typeof Notification!=="undefined"}
+function notifyPermission(){return notifySupported()?Notification.permission:"unsupported"}
+// Safari resolved requestPermission() through a callback long before it returned a
+// promise, and the installed-app versions this runs on span both.
+function requestNotifyPermission(){
+ if(!notifySupported())return Promise.resolve("unsupported");
+ if(Notification.permission!=="default")return Promise.resolve(Notification.permission);
+ return new Promise(res=>{
+  try{const p=Notification.requestPermission(r=>res(r||Notification.permission));if(p?.then)p.then(r=>res(r||Notification.permission),()=>res(Notification.permission))}
+  catch{res(Notification.permission)}
+ });
+}
+// An installed web app on iOS can only post a notification through the service worker
+// registration, and Android Chrome refuses `new Notification` outright, so the worker is
+// tried first and the constructor is only the desktop fallback.
+async function postNotification(title,opts){
+ if(notifyPermission()!=="granted")return false;
+ const body={icon:"./assets/icons/icon-192.png",badge:"./assets/icons/icon-192.png",data:{url:location.href},...opts};
+ try{
+  const reg=await navigator.serviceWorker?.getRegistration?.();
+  if(reg?.showNotification){await reg.showNotification(title,body);return true}
+ }catch{}
+ try{new Notification(title,body);return true}catch{return false}
+}
+// Which side of the match this team is on. Null means the match is not theirs, which is
+// the signal to skip it — the reminder exists to say "you are up, and you are red".
+function allianceColor(m){
+ if((m?.red||[]).includes(team))return "red";
+ if((m?.blue||[]).includes(team))return "blue";
+ return null;
+}
+function remindMins(when){
+ // Floored at one minute: a reminder that reads "in 0 min" is worse than slightly early.
+ return Math.max(1,Math.round((when-Date.now()/1000)/60));
+}
+function matchReminder(m,color,when,mins=remindMins(when)){
+ const side=color.toUpperCase(), dot=color==="red"?"\ud83d\udd34":"\ud83d\udd35";
+ const at=fmtUnixTime(when);
+ return {
+  // Colour leads the title because a phone's lock screen may show little else.
+  title:`${dot} ${side} · ${matchLabel(m)} in ${mins} min`,
+  body:`Team ${team} is on the ${side} alliance${at?` · starts ${at}`:""}.`
+ };
+}
+// Polled rather than queued with one timer per match: the schedule shifts all day as an
+// event runs long or catches up, and re-arming timers on every refresh is far easier to
+// get wrong than re-reading the clock. 15s is ample resolution inside a 5-minute window.
+function checkMatchReminders(){
+ if(!config.notify||notifyPermission()!=="granted")return;
+ // Research mode points the whole app at someone else's event. The reminders belong to
+ // your own team's schedule, so they stay quiet while browsing.
+ if(researching())return;
+ const list=myMatchList(), now=Date.now()/1000;
+ let dirty=false;
+ for(const m of list){
+  // A pending playoff slot has no lineup yet, so neither the colour nor the time is real.
+  if(m.pending||matchDone(m))continue;
+  const color=allianceColor(m), when=m.predicted_time||m.time||null;
+  if(!color||!when)continue;
+  const left=when-now;
+  // Past its start time the match is under way, not upcoming; the next-match bar covers
+  // that. Further out than the lead time there is nothing to say yet.
+  if(left<=0||left>NOTIFY_LEAD_SEC)continue;
+  const seen=notified[m.key];
+  if(seen&&Math.abs(seen-when)<=NOTIFY_LEAD_SEC)continue;
+  notified[m.key]=when;dirty=true;
+  const r=matchReminder(m,color,when);
+  postNotification(r.title,{body:r.body,tag:"match-"+m.key});
+ }
+ // Entries for matches that have been played would otherwise pile up for the season.
+ const upcoming=new Set(list.filter(m=>!matchDone(m)).map(m=>m.key));
+ for(const k of Object.keys(notified))if(!upcoming.has(k)){delete notified[k];dirty=true}
+ if(dirty)save(K.notified,notified);
+}
+function renderNotifyStatus(){
+ const el=$("notifyStatus"); if(!el)return;
+ const box=$("notifyEnabled");
+ const perm=notifyPermission();
+ // Permission can be revoked in browser settings long after it was granted here, which
+ // leaves the saved preference on and nothing arriving. Show the box as it really is.
+ if(box)box.checked=!!config.notify&&perm==="granted";
+ if(perm==="unsupported"){el.innerHTML='<span class="warn">This browser cannot show notifications.</span>';if(box)box.disabled=true;return}
+ if(perm==="denied"){el.innerHTML='<span class="warn">Blocked. Allow notifications for this site, then try again.</span>';return}
+ if(!config.notify||perm!=="granted"){el.textContent="Off. Turning it on asks your browser for permission.";return}
+ el.innerHTML='<span class="ok">On. Reminders arrive while the app is running.</span>';
+}
 function probability(m){
  const re=m.red.reduce((a,t)=>a+(+epa[t]?.total||0),0), be=m.blue.reduce((a,t)=>a+(+epa[t]?.total||0),0);
  if(!re&&!be)return null; const p=1/(1+Math.exp(-(re-be)/12)); return {red:Math.round(p*100),blue:Math.round((1-p)*100),re,be};
@@ -1605,6 +1703,34 @@ $("nextBarGo").addEventListener("click",()=>scrollToNextMatch());
 // One second, and only the bar: a full render every tick would rebuild the whole
 // timeline underneath the user's finger.
 setInterval(renderNextBar,1000);
+// Separate from the bar tick above: a five-minute window needs nothing like per-second
+// resolution, and this walks the match list of its own.
+setInterval(checkMatchReminders,NOTIFY_CHECK_MS);
+// Permission can only be asked for from a user gesture, so the checkbox asks on the spot
+// and un-ticks itself if the answer is no. No Save button: the preference is a single
+// flag, and merging it into the shared config leaves the other sections' fields alone.
+$("notifyEnabled").addEventListener("change",async e=>{
+ let on=e.target.checked;
+ if(on)on=(await requestNotifyPermission())==="granted";
+ config={...config,notify:on};
+ save(K.config,config);
+ renderNotifyStatus();
+ if(on)checkMatchReminders();
+});
+$("notifyTestBtn").addEventListener("click",async()=>{
+ const b=$("notifyTestBtn");
+ b.disabled=true;
+ const granted=(await requestNotifyPermission())==="granted";
+ // Previewed with your real next match where there is one, so the test shows what will
+ // actually arrive. The lead is forced to five minutes; the start time stays honest.
+ const m=myMatchList().find(x=>!x.pending&&!matchDone(x)&&allianceColor(x));
+ const r=m?matchReminder(m,allianceColor(m),m.predicted_time||m.time||null,5)
+         :{title:"\ud83d\udd34 RED \u00b7 Qualification 1 in 5 min",body:`Team ${team} is on the RED alliance.`};
+ const sent=granted&&await postNotification(r.title,{body:r.body,tag:"match-test"});
+ renderNotifyStatus();
+ if(!sent)$("notifyStatus").innerHTML='<span class="warn">Could not show a notification. Check your browser settings.</span>';
+ b.disabled=false;
+});
 $("teamPageBack").addEventListener("click",closeTeamSeason);
 $("teamPage").addEventListener("click",e=>{
  const y=e.target.closest("[data-season-year]");
@@ -1690,7 +1816,7 @@ $("teamList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
  if(row)openTeamDetail(+row.dataset.team);
 });
-render();scrollToNextMatch("auto");loadTeamEvents().then(()=>runTimed(()=>refresh()));startRefreshTimer();renderCacheDetails();
+render();scrollToNextMatch("auto");loadTeamEvents().then(()=>runTimed(()=>refresh()).then(checkMatchReminders));startRefreshTimer();renderCacheDetails();renderNotifyStatus();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.
@@ -1722,5 +1848,5 @@ function showUpdateBanner(){
  document.body.appendChild(b);
 }
 setInterval(checkForUpdate,VERSION_CHECK_MS);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkForUpdate()});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){checkForUpdate();checkMatchReminders()}});
 checkForUpdate();

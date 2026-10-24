@@ -63,6 +63,7 @@ only for the tests, and nothing it installs ships to the browser.
 | `cache` | cache-first service worker, offline load, and the version panel |
 | `team-switch` | the ETag regression that emptied the event dropdown |
 | `timeouts` | saves and refreshes recovering from a hung network (`@slow`) |
+| `notifications` | the five-minute match reminder: colour, timing, and the permission flow |
 
 Three things about the harness are worth knowing before adding specs, because each one
 silently passes a broken test rather than failing it:
@@ -77,6 +78,43 @@ silently passes a broken test rather than failing it:
   controlling worker lets cross-origin requests bypass page routing. To prove
   something was served from cache, check the server's own `hits` — page-level request
   events fire even when the worker answered without touching the network.
+
+## Match notifications
+
+**Settings → Match notifications** turns on a reminder five minutes before each of your
+team's matches. The notification leads with your alliance colour, because that is what a
+lock screen has room for:
+
+> **🔴 RED · Qualification 46 in 5 min**
+>
+> Team 10021 is on the RED alliance · starts 2:14 PM.
+
+Ticking the box asks the browser for notification permission, which can only be requested
+from a tap — so there is no Save button here; the preference applies immediately. The
+**Send a test notification** button previews the reminder using your real next match.
+
+**The reminder only fires while the app is running** — open in front of you, or
+backgrounded as an installed web app. This is a static site with no server, so there is no
+web push and nothing can wake the app from outside. Once it is fully closed, nothing is
+left to fire the reminder. Making it work from a cold start would mean standing up a push
+service with VAPID keys and a subscription store, which this deployment deliberately does
+not have.
+
+Details worth knowing:
+
+- Installed web apps on iOS can only post a notification through
+  `ServiceWorkerRegistration.showNotification`; `new Notification` throws there, and on
+  Android Chrome too. The app tries the service worker first and only falls back to the
+  constructor on desktop. iOS needs 16.4 or newer, and the app must be added to the home
+  screen — Safari tabs get nothing.
+- The schedule is **polled every 15 seconds**, not armed as one timer per match. Predicted
+  match times move all day as an event runs long or catches up, and re-reading the clock
+  is far harder to get wrong than re-arming timers on every refresh.
+- Announced matches are remembered in `gg_notified_v1` against the start time announced,
+  so a reload does not repeat a reminder, but a schedule that slips past the five-minute
+  lead announces again rather than going quiet.
+- Reminders stay silent in research mode: that points the app at someone else's event,
+  and the reminder is about your own team's schedule.
 
 ## Install on iPhone
 
