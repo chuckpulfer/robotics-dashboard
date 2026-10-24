@@ -18,7 +18,8 @@ const APP_VERSION=document.querySelector('meta[name="app-version"]')?.content||"
 const VERSION_STAMPED=!!APP_VERSION&&APP_VERSION!=="__APP_VERSION__";
 const load=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false,notify:false});
+let config=load(K.config,{eventKey:"2026iri",tbaKey:"",refreshSeconds:DEFAULT_REFRESH,team:DEFAULT_TEAM,eventManual:false,statbotics:false,notify:true});
+if(config.notify===undefined){config.notify=true;save(K.config,config)}
 let team=+config.team||DEFAULT_TEAM;
 let teamEvents=(()=>{const c=load(K.teamEvents,null);return c?.team===team?c.events||[]:[]})();
 let matches=load(K.matches,null);
@@ -982,16 +983,60 @@ function checkMatchReminders(){
  for(const k of Object.keys(notified))if(!upcoming.has(k)){delete notified[k];dirty=true}
  if(dirty)save(K.notified,notified);
 }
+// iPhones and iPads hand the Notification API only to an installed web app. In a plain
+// Safari tab the constructor does not exist at all, so there is no permission to ask
+// for and the honest answer is "add it to the Home Screen first".
+function isIOS(){
+ return /iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+}
+function isInstalled(){
+ return !!(navigator.standalone||window.matchMedia?.("(display-mode: standalone)")?.matches);
+}
+// Granting permission needs a tap, so the app cannot switch reminders on by itself. The
+// preference defaults to on and this is the one outstanding step; doing it from one
+// button, which then posts a confirmation, means "enable" and "test" are a single tap.
+async function enableNotifications(){
+ const perm=await requestNotifyPermission();
+ if(perm!=="granted"){renderNotifyStatus();renderNotifyPrompt();return false}
+ config={...config,notify:true};
+ save(K.config,config);
+ // The confirmation doubles as the test: you have granted permission and you have now
+ // seen what a reminder looks like, without hunting for a second button.
+ await postNotification("\ud83d\udd14 Reminders are on",{body:`You'll get a heads-up 5 minutes before team ${team}'s matches, with your alliance colour.`,tag:"notify-confirm"});
+ renderNotifyStatus();renderNotifyPrompt();checkMatchReminders();
+ return true;
+}
+// Settings is not somewhere anyone opens unprompted, and a reminder nobody has granted
+// permission for never arrives. So the app asks once, up top where people already look,
+// and takes either answer as settling it.
+function renderNotifyPrompt(){
+ const el=$("notifyPrompt"); if(!el)return;
+ el.hidden=!(config.notify&&!config.notifyPromptSeen&&notifySupported()&&notifyPermission()==="default");
+}
+function dismissNotifyPrompt(){
+ config={...config,notifyPromptSeen:true};
+ save(K.config,config);
+ renderNotifyPrompt();
+}
 function renderNotifyStatus(){
  const el=$("notifyStatus"); if(!el)return;
- const box=$("notifyEnabled");
+ const box=$("notifyEnabled"), btn=$("notifyEnableBtn");
  const perm=notifyPermission();
  // Permission can be revoked in browser settings long after it was granted here, which
  // leaves the saved preference on and nothing arriving. Show the box as it really is.
- if(box)box.checked=!!config.notify&&perm==="granted";
- if(perm==="unsupported"){el.innerHTML='<span class="warn">This browser cannot show notifications.</span>';if(box)box.disabled=true;return}
+ if(box){box.checked=!!config.notify&&perm==="granted";box.disabled=perm==="unsupported"}
+ // Only offered when a tap can actually change something: reminders are wanted and the
+ // browser has not been asked yet.
+ if(btn)btn.hidden=!(perm==="default"&&config.notify);
+ if(perm==="unsupported"){
+  el.innerHTML=isIOS()&&!isInstalled()
+   ?'<span class="warn">Add to Home Screen first \u2014 iPhone only allows reminders in the installed app.</span>'
+   :'<span class="warn">This browser cannot show notifications.</span>';
+  return;
+ }
  if(perm==="denied"){el.innerHTML='<span class="warn">Blocked. Allow notifications for this site, then try again.</span>';return}
- if(!config.notify||perm!=="granted"){el.textContent="Off. Turning it on asks your browser for permission.";return}
+ if(!config.notify){el.textContent="Off. Turning it on asks your browser for permission.";return}
+ if(perm==="default"){el.textContent="On, but your browser has not been asked yet. Tap below to allow.";return}
  el.innerHTML='<span class="ok">On. Reminders arrive while the app is running.</span>';
 }
 function probability(m){
@@ -1474,7 +1519,7 @@ function renderPlayoffs(){
  el.innerHTML=keyReminder+champHtml+bHtml+aHtml;
 }
 // The full directory is thousands of rows, so it is only rebuilt while its tab is up.
-function render(){renderHeader();renderNextBar();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
+function render(){renderHeader();renderNextBar();renderNotifyPrompt();renderMatches();renderAllMatches();renderTeams();renderPlayoffs();if($("page-allteams")?.classList.contains("active"))renderAllTeams()}
 const SAVE_LABEL="Save and refresh";
 let refreshTimer;
 function setSaveButtonState(btn,state){
@@ -1710,12 +1755,23 @@ setInterval(checkMatchReminders,NOTIFY_CHECK_MS);
 // and un-ticks itself if the answer is no. No Save button: the preference is a single
 // flag, and merging it into the shared config leaves the other sections' fields alone.
 $("notifyEnabled").addEventListener("change",async e=>{
- let on=e.target.checked;
- if(on)on=(await requestNotifyPermission())==="granted";
- config={...config,notify:on};
+ if(e.target.checked){await enableNotifications();return}
+ config={...config,notify:false};
  save(K.config,config);
- renderNotifyStatus();
- if(on)checkMatchReminders();
+ renderNotifyStatus();renderNotifyPrompt();
+});
+$("notifyEnableBtn").addEventListener("click",async()=>{
+ const b=$("notifyEnableBtn");
+ b.disabled=true;
+ await enableNotifications();
+ b.disabled=false;
+});
+// The same offer up top, so it can be taken without opening Settings.
+$("notifyPrompt").addEventListener("click",async e=>{
+ if(e.target.closest("[data-notify-dismiss]")){dismissNotifyPrompt();return}
+ if(!e.target.closest("[data-notify-enable]"))return;
+ // Either answer settles the question; the bar should not come back next launch.
+ if(await enableNotifications())dismissNotifyPrompt();
 });
 $("notifyTestBtn").addEventListener("click",async()=>{
  const b=$("notifyTestBtn");
@@ -1727,8 +1783,9 @@ $("notifyTestBtn").addEventListener("click",async()=>{
  const r=m?matchReminder(m,allianceColor(m),m.predicted_time||m.time||null,5)
          :{title:"\ud83d\udd34 RED \u00b7 Qualification 1 in 5 min",body:`Team ${team} is on the RED alliance.`};
  const sent=granted&&await postNotification(r.title,{body:r.body,tag:"match-test"});
- renderNotifyStatus();
- if(!sent)$("notifyStatus").innerHTML='<span class="warn">Could not show a notification. Check your browser settings.</span>';
+ renderNotifyStatus();renderNotifyPrompt();
+ if(sent)$("notifyStatus").innerHTML='<span class="ok">Test sent. If nothing appeared, check your notification settings.</span>';
+ else $("notifyStatus").innerHTML='<span class="warn">Could not show a notification. Check your browser settings.</span>';
  b.disabled=false;
 });
 $("teamPageBack").addEventListener("click",closeTeamSeason);
@@ -1816,7 +1873,7 @@ $("teamList").addEventListener("click",e=>{
  const row=e.target.closest("[data-team]");
  if(row)openTeamDetail(+row.dataset.team);
 });
-render();scrollToNextMatch("auto");loadTeamEvents().then(()=>runTimed(()=>refresh()).then(checkMatchReminders));startRefreshTimer();renderCacheDetails();renderNotifyStatus();
+render();scrollToNextMatch("auto");loadTeamEvents().then(()=>runTimed(()=>refresh()).then(checkMatchReminders));startRefreshTimer();renderCacheDetails();renderNotifyStatus();renderNotifyPrompt();
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 // Detect when a newer build has been deployed and reload the whole app.

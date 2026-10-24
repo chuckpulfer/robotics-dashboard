@@ -46,7 +46,7 @@ export const DEFAULT_CONFIG = {
   team: 10021,
   eventManual: true,
   statbotics: false,
-  notify: false,
+  notify: true,
 };
 
 const CORS = { "Access-Control-Expose-Headers": "ETag" };

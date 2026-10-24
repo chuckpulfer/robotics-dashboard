@@ -89,9 +89,27 @@ lock screen has room for:
 >
 > Team 10021 is on the RED alliance · starts 2:14 PM.
 
-Ticking the box asks the browser for notification permission, which can only be requested
-from a tap — so there is no Save button here; the preference applies immediately. The
-**Send a test notification** button previews the reminder using your real next match.
+The preference is **on by default**, including for installs that predate the feature — a
+stored config simply has no `notify` key, and reading that as "off" would have opted every
+existing user out silently.
+
+On by default is as far as the app can go on its own: showing a notification needs the
+browser's permission, and permission can only be requested from a tap. That one
+outstanding step is made as short as possible:
+
+- A prompt appears above the tabs — *"Get a reminder 5 minutes before your matches"* —
+  with **Allow** and **Not now**. Either answer settles it and the bar does not return.
+- **Allow** grants permission *and* immediately posts a confirmation notification, so
+  enabling and testing are one tap rather than two. Ticking the Settings checkbox runs the
+  same path.
+- **Send a test notification** previews a real reminder using your actual next match, and
+  says so if nothing could be sent.
+- On an iPhone that has not installed the app, there is no permission to ask for at all —
+  Safari does not expose the API — so the panel says to Add to Home Screen first instead
+  of offering a button that cannot work.
+
+Refusing permission leaves the preference alone: wanting reminders is not the same as the
+browser allowing them, and nothing fires while it says no.
 
 **The reminder only fires while the app is running** — open in front of you, or
 backgrounded as an installed web app. This is a static site with no server, so there is no

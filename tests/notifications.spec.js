@@ -81,7 +81,7 @@ const myMatch = ({ num = 46, color = "red", time }) =>
 
 async function load(page, { matches = [], notify = true } = {}) {
   await mockTba(page, { matches, rankings: [tbaRanking(10021, 4)] });
-  await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, notify } });
+  await openApp(page, server.baseURL, { config: { ...DEFAULT_CONFIG, notify, notifyPromptSeen: true } });
   await waitForRefresh(page);
 }
 
@@ -148,7 +148,7 @@ test("stays quiet while the option is off", async ({ page }) => {
   expect(await notes(page)).toEqual([]);
 });
 
-test("the option is off by default and explains itself", async ({ page }) => {
+test("ships on, with permission the one outstanding step", async ({ page }) => {
   await stubNotifications(page, "default");
   await mockTba(page, {});
   await openApp(page, server.baseURL);
@@ -156,10 +156,83 @@ test("the option is off by default and explains itself", async ({ page }) => {
 
   const panel = page.locator("#notifyPanel");
   await expect(panel.locator("summary")).toHaveText("Match notifications");
+  expect((await readConfig(page)).notify).toBe(true);
+  // The box tracks what will actually happen, and nothing can until permission is given.
   await expect(page.locator("#notifyEnabled")).not.toBeChecked();
-  await expect(page.locator("#notifyStatus")).toContainText("Off");
+  await expect(page.locator("#notifyStatus")).toContainText("not been asked");
+  await expect(page.locator("#notifyEnableBtn")).toBeVisible();
   // The one thing a user cannot guess: it needs the app to be running.
   await expect(panel).toContainText(/open or in the background/);
+});
+
+test("an install predating the setting is opted in, not silently left off", async ({ page }) => {
+  await stubNotifications(page, "granted");
+  await mockTba(page, {});
+  // A stored config from before the feature existed simply has no `notify` key.
+  const { notify, ...legacy } = DEFAULT_CONFIG;
+  await openApp(page, server.baseURL, { config: legacy });
+
+  expect((await readConfig(page)).notify).toBe(true);
+});
+
+test("one tap allows and confirms, without hunting for a second button", async ({ page }) => {
+  await stubNotifications(page, "default");
+  await mockTba(page, {});
+  await openApp(page, server.baseURL);
+  await openNotifyPanel(page);
+
+  await page.click("#notifyEnableBtn");
+  await expect(page.locator("#notifyStatus .ok")).toContainText("On.");
+  await expect(page.locator("#notifyEnableBtn")).toBeHidden();
+
+  // The confirmation doubles as the test: you have seen what a reminder looks like.
+  const [n] = await notes(page);
+  expect(n.title).toMatch(/Reminders are on/);
+  expect(n.body).toContain("5 minutes");
+});
+
+test("the prompt up top offers the same thing, and either answer settles it", async ({ page }) => {
+  await stubNotifications(page, "default");
+  await mockTba(page, {});
+  await openApp(page, server.baseURL);
+
+  const bar = page.locator("#notifyPrompt");
+  await expect(bar).toBeVisible();
+  await bar.locator("[data-notify-dismiss]").click();
+  await expect(bar).toBeHidden();
+
+  // And it stays gone, rather than nagging on every launch.
+  await page.reload();
+  await page.waitForSelector(".tab");
+  await expect(bar).toBeHidden();
+});
+
+test("the prompt can allow without opening Settings", async ({ page }) => {
+  await stubNotifications(page, "default");
+  await mockTba(page, {});
+  await openApp(page, server.baseURL);
+
+  await page.locator("#notifyPrompt [data-notify-enable]").click();
+  await expect(page.locator("#notifyPrompt")).toBeHidden();
+  expect((await readConfig(page)).notify).toBe(true);
+  expect((await notes(page))[0].title).toMatch(/Reminders are on/);
+});
+
+test("says to install first where iOS allows nothing else", async ({ page }) => {
+  // A plain iOS Safari tab has no Notification constructor at all, so there is no
+  // permission to ask for — only the Home Screen step.
+  await page.addInitScript(() => {
+    delete window.Notification;
+    Object.defineProperty(navigator, "userAgent", { get: () => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" });
+    Object.defineProperty(navigator, "standalone", { get: () => false });
+  });
+  await mockTba(page, {});
+  await openApp(page, server.baseURL);
+  await openNotifyPanel(page);
+
+  await expect(page.locator("#notifyStatus .warn")).toContainText("Add to Home Screen");
+  await expect(page.locator("#notifyEnabled")).toBeDisabled();
+  await expect(page.locator("#notifyPrompt")).toBeHidden();
 });
 
 test("ticking the box asks permission and saves the preference", async ({ page }) => {
@@ -169,7 +242,7 @@ test("ticking the box asks permission and saves the preference", async ({ page }
   await openNotifyPanel(page);
 
   await page.check("#notifyEnabled");
-  await expect(page.locator("#notifyStatus")).toContainText("On");
+  await expect(page.locator("#notifyStatus .ok")).toContainText("On.");
   await expect(page.locator("#notifyEnabled")).toBeChecked();
   expect((await readConfig(page)).notify).toBe(true);
 
@@ -190,7 +263,10 @@ test("un-ticks itself and says so when permission is refused", async ({ page }) 
   await page.locator("#notifyEnabled").click();
   await expect(page.locator("#notifyEnabled")).not.toBeChecked();
   await expect(page.locator("#notifyStatus .warn")).toContainText("Blocked");
-  expect((await readConfig(page)).notify).toBe(false);
+  // The preference is left alone: wanting reminders is not the same as the browser
+  // allowing them, and nothing fires while it says no.
+  await expect(page.locator("#notifyEnableBtn")).toBeHidden();
+  expect(await notes(page)).toEqual([]);
 });
 
 test("an API-section save leaves the notification preference alone", async ({ page }) => {
